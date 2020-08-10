@@ -1,23 +1,20 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule binaryToBase64
- * @flow
+ * @format
+ * @flow strict
  */
+
 'use strict';
 
-/* $FlowFixMe(>=0.54.0 site=react_native_oss) This comment suppresses an error
- * found when Flow v0.54 was deployed. To see the error delete this comment and
- * run Flow. */
 const base64 = require('base64-js');
 
-function binaryToBase64(data: ArrayBuffer | $ArrayBufferView) {
+function binaryToBase64(data: ArrayBuffer | $ArrayBufferView): string {
   if (data instanceof ArrayBuffer) {
+    // $FlowFixMe[reassign-const]
     data = new Uint8Array(data);
   }
   if (data instanceof Uint8Array) {
@@ -26,7 +23,8 @@ function binaryToBase64(data: ArrayBuffer | $ArrayBufferView) {
   if (!ArrayBuffer.isView(data)) {
     throw new Error('data must be ArrayBuffer or typed array');
   }
-  const {buffer, byteOffset, byteLength} = data;
+  // Already checked that `data` is `DataView` in `ArrayBuffer.isView(data)`
+  const {buffer, byteOffset, byteLength} = ((data: $FlowFixMe): DataView);
   return base64.fromByteArray(new Uint8Array(buffer, byteOffset, byteLength));
 }
 

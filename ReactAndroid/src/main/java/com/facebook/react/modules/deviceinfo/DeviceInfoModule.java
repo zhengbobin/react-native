@@ -1,47 +1,47 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.modules.deviceinfo;
 
-import javax.annotation.Nullable;
-
-import java.util.HashMap;
-import java.util.Map;
-
 import android.content.Context;
-import android.util.DisplayMetrics;
-
-import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.BaseJavaModule;
+import androidx.annotation.Nullable;
+import com.facebook.fbreact.specs.NativeDeviceInfoSpec;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.ReactNoCrashSoftException;
+import com.facebook.react.bridge.ReactSoftException;
+import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.facebook.react.uimanager.DisplayMetricsHolder;
+import java.util.HashMap;
+import java.util.Map;
 
-/**
- * Module that exposes Android Constants to JS.
- */
-@ReactModule(name = "DeviceInfo")
-public class DeviceInfoModule extends BaseJavaModule implements
-    LifecycleEventListener {
+/** Module that exposes Android Constants to JS. */
+@ReactModule(name = DeviceInfoModule.NAME)
+public class DeviceInfoModule extends NativeDeviceInfoSpec implements LifecycleEventListener {
+
+  public static final String NAME = "DeviceInfo";
 
   private @Nullable ReactApplicationContext mReactApplicationContext;
   private float mFontScale;
+  private @Nullable ReadableMap mPreviousDisplayMetrics;
 
   public DeviceInfoModule(ReactApplicationContext reactContext) {
-    this((Context) reactContext);
+    super(reactContext);
+    DisplayMetricsHolder.initDisplayMetricsIfNotInitialized(reactContext);
+    mFontScale = reactContext.getResources().getConfiguration().fontScale;
     mReactApplicationContext = reactContext;
+    mReactApplicationContext.addLifecycleEventListener(this);
   }
 
   public DeviceInfoModule(Context context) {
+    super(null);
     mReactApplicationContext = null;
     DisplayMetricsHolder.initDisplayMetricsIfNotInitialized(context);
     mFontScale = context.getResources().getConfiguration().fontScale;
@@ -49,15 +49,13 @@ public class DeviceInfoModule extends BaseJavaModule implements
 
   @Override
   public String getName() {
-    return "DeviceInfo";
+    return NAME;
   }
 
   @Override
-  public @Nullable Map<String, Object> getConstants() {
+  public @Nullable Map<String, Object> getTypedExportedConstants() {
     HashMap<String, Object> constants = new HashMap<>();
-    constants.put(
-        "Dimensions",
-        getDimensionsConstants());
+    constants.put("Dimensions", DisplayMetricsHolder.getDisplayMetricsMap(mFontScale));
     return constants;
   }
 
@@ -75,45 +73,36 @@ public class DeviceInfoModule extends BaseJavaModule implements
   }
 
   @Override
-  public void onHostPause() {
-  }
+  public void onHostPause() {}
 
   @Override
-  public void onHostDestroy() {
-  }
+  public void onHostDestroy() {}
 
   public void emitUpdateDimensionsEvent() {
     if (mReactApplicationContext == null) {
       return;
     }
 
-    mReactApplicationContext
-        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-        .emit("didUpdateDimensions", getDimensionsConstants());
+    if (mReactApplicationContext.hasActiveCatalystInstance()) {
+      // Don't emit an event to JS if the dimensions haven't changed
+      WritableNativeMap displayMetrics =
+          DisplayMetricsHolder.getDisplayMetricsNativeMap(mFontScale);
+      if (mPreviousDisplayMetrics == null) {
+        mPreviousDisplayMetrics = displayMetrics.copy();
+      } else if (!displayMetrics.equals(mPreviousDisplayMetrics)) {
+        mPreviousDisplayMetrics = displayMetrics.copy();
+        mReactApplicationContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+            .emit("didUpdateDimensions", displayMetrics);
+      }
+    } else {
+      ReactSoftException.logSoftException(
+          NAME,
+          new ReactNoCrashSoftException(
+              "No active CatalystInstance, cannot emitUpdateDimensionsEvent"));
+    }
   }
 
-  private WritableMap getDimensionsConstants() {
-    DisplayMetrics windowDisplayMetrics = DisplayMetricsHolder.getWindowDisplayMetrics();
-    DisplayMetrics screenDisplayMetrics = DisplayMetricsHolder.getScreenDisplayMetrics();
-
-    WritableMap windowDisplayMetricsMap = Arguments.createMap();
-    windowDisplayMetricsMap.putInt("width", windowDisplayMetrics.widthPixels);
-    windowDisplayMetricsMap.putInt("height", windowDisplayMetrics.heightPixels);
-    windowDisplayMetricsMap.putDouble("scale", windowDisplayMetrics.density);
-    windowDisplayMetricsMap.putDouble("fontScale", mFontScale);
-    windowDisplayMetricsMap.putDouble("densityDpi", windowDisplayMetrics.densityDpi);
-
-    WritableMap screenDisplayMetricsMap = Arguments.createMap();
-    screenDisplayMetricsMap.putInt("width", screenDisplayMetrics.widthPixels);
-    screenDisplayMetricsMap.putInt("height", screenDisplayMetrics.heightPixels);
-    screenDisplayMetricsMap.putDouble("scale", screenDisplayMetrics.density);
-    screenDisplayMetricsMap.putDouble("fontScale", mFontScale);
-    screenDisplayMetricsMap.putDouble("densityDpi", screenDisplayMetrics.densityDpi);
-
-    WritableMap dimensionsMap = Arguments.createMap();
-    dimensionsMap.putMap("windowPhysicalPixels", windowDisplayMetricsMap);
-    dimensionsMap.putMap("screenPhysicalPixels", screenDisplayMetricsMap);
-
-    return dimensionsMap;
-  }
+  @Override
+  public void invalidate() {}
 }

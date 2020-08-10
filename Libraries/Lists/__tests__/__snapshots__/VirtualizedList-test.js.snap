@@ -434,6 +434,7 @@ exports[`VirtualizedList renders all the bells and whistles 1`] = `
   getItemLayout={[Function]}
   horizontal={false}
   initialNumToRender={10}
+  invertStickyHeaders={true}
   inverted={true}
   keyExtractor={[Function]}
   maxToRenderPerBatch={10}
@@ -441,14 +442,13 @@ exports[`VirtualizedList renders all the bells and whistles 1`] = `
   onEndReachedThreshold={2}
   onLayout={[Function]}
   onMomentumScrollEnd={[Function]}
-  onRefresh={[Function]}
+  onRefresh={[MockFunction]}
   onScroll={[Function]}
   onScrollBeginDrag={[Function]}
   onScrollEndDrag={[Function]}
   refreshControl={
     <RefreshControlMock
-      onRefresh={[Function]}
-      progressViewOffset={undefined}
+      onRefresh={[MockFunction]}
       refreshing={false}
     />
   }
@@ -488,7 +488,6 @@ exports[`VirtualizedList renders all the bells and whistles 1`] = `
       <header />
     </View>
     <View
-      onLayout={undefined}
       style={
         Array [
           Object {
@@ -510,7 +509,6 @@ exports[`VirtualizedList renders all the bells and whistles 1`] = `
       <separator />
     </View>
     <View
-      onLayout={undefined}
       style={
         Array [
           Object {
@@ -532,7 +530,6 @@ exports[`VirtualizedList renders all the bells and whistles 1`] = `
       <separator />
     </View>
     <View
-      onLayout={undefined}
       style={
         Array [
           Object {
@@ -554,7 +551,6 @@ exports[`VirtualizedList renders all the bells and whistles 1`] = `
       <separator />
     </View>
     <View
-      onLayout={undefined}
       style={
         Array [
           Object {
@@ -576,7 +572,6 @@ exports[`VirtualizedList renders all the bells and whistles 1`] = `
       <separator />
     </View>
     <View
-      onLayout={undefined}
       style={
         Array [
           Object {
@@ -670,19 +665,12 @@ exports[`VirtualizedList renders empty list with empty component 1`] = `
   <View>
     <View
       onLayout={[Function]}
-      style={null}
     >
       <header />
     </View>
+    <empty />
     <View
       onLayout={[Function]}
-      style={null}
-    >
-      <empty />
-    </View>
-    <View
-      onLayout={[Function]}
-      style={null}
     >
       <footer />
     </View>
@@ -735,7 +723,6 @@ exports[`VirtualizedList renders list with empty component 1`] = `
 
 exports[`VirtualizedList renders null list 1`] = `
 <RCTScrollView
-  data={undefined}
   disableVirtualization={false}
   getItem={[Function]}
   getItemCount={[Function]}
@@ -824,6 +811,70 @@ exports[`VirtualizedList renders simple list 1`] = `
 </RCTScrollView>
 `;
 
+exports[`VirtualizedList renders simple list using ListItemComponent 1`] = `
+<RCTScrollView
+  ListItemComponent={[Function]}
+  data={
+    Array [
+      Object {
+        "key": "i1",
+      },
+      Object {
+        "key": "i2",
+      },
+      Object {
+        "key": "i3",
+      },
+    ]
+  }
+  disableVirtualization={false}
+  getItem={[Function]}
+  getItemCount={[Function]}
+  horizontal={false}
+  initialNumToRender={10}
+  keyExtractor={[Function]}
+  maxToRenderPerBatch={10}
+  onContentSizeChange={[Function]}
+  onEndReachedThreshold={2}
+  onLayout={[Function]}
+  onMomentumScrollEnd={[Function]}
+  onScroll={[Function]}
+  onScrollBeginDrag={[Function]}
+  onScrollEndDrag={[Function]}
+  scrollEventThrottle={50}
+  stickyHeaderIndices={Array []}
+  updateCellsBatchingPeriod={50}
+  windowSize={21}
+>
+  <View>
+    <View
+      onLayout={[Function]}
+      style={null}
+    >
+      <item
+        value="i1"
+      />
+    </View>
+    <View
+      onLayout={[Function]}
+      style={null}
+    >
+      <item
+        value="i2"
+      />
+    </View>
+    <View
+      onLayout={[Function]}
+      style={null}
+    >
+      <item
+        value="i3"
+      />
+    </View>
+  </View>
+</RCTScrollView>
+`;
+
 exports[`VirtualizedList test getItem functionality where data is not an Array 1`] = `
 <RCTScrollView
   data={
@@ -860,6 +911,50 @@ exports[`VirtualizedList test getItem functionality where data is not an Array 1
     >
       <item
         value="item_0"
+      />
+    </View>
+  </View>
+</RCTScrollView>
+`;
+
+exports[`VirtualizedList warns if both renderItem or ListItemComponent are specified. Uses ListItemComponent 1`] = `
+<RCTScrollView
+  ListItemComponent={[Function]}
+  data={
+    Array [
+      Object {
+        "key": "i1",
+      },
+    ]
+  }
+  disableVirtualization={false}
+  getItem={[Function]}
+  getItemCount={[Function]}
+  horizontal={false}
+  initialNumToRender={10}
+  keyExtractor={[Function]}
+  maxToRenderPerBatch={10}
+  onContentSizeChange={[Function]}
+  onEndReachedThreshold={2}
+  onLayout={[Function]}
+  onMomentumScrollEnd={[Function]}
+  onScroll={[Function]}
+  onScrollBeginDrag={[Function]}
+  onScrollEndDrag={[Function]}
+  renderItem={[Function]}
+  scrollEventThrottle={50}
+  stickyHeaderIndices={Array []}
+  updateCellsBatchingPeriod={50}
+  windowSize={21}
+>
+  <View>
+    <View
+      onLayout={[Function]}
+      style={null}
+    >
+      <item
+        testID="i1-ListItemComponent"
+        value="i1"
       />
     </View>
   </View>

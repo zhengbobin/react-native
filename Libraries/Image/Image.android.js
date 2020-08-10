@@ -1,328 +1,407 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule Image
  * @flow
+ * @format
  */
+
 'use strict';
 
-var ImageResizeMode = require('ImageResizeMode');
-var ImageStylePropTypes = require('ImageStylePropTypes');
-var NativeMethodsMixin = require('NativeMethodsMixin');
-var NativeModules = require('NativeModules');
-var React = require('React');
-var PropTypes = require('prop-types');
-var ReactNativeViewAttributes = require('ReactNativeViewAttributes');
-var Set = require('Set');
-var StyleSheet = require('StyleSheet');
-var StyleSheetPropType = require('StyleSheetPropType');
-var View = require('View');
-var ViewPropTypes = require('ViewPropTypes');
-var ViewStylePropTypes = require('ViewStylePropTypes');
+const DeprecatedImageStylePropTypes = require('../DeprecatedPropTypes/DeprecatedImageStylePropTypes');
+const DeprecatedStyleSheetPropType = require('../DeprecatedPropTypes/DeprecatedStyleSheetPropType');
+const DeprecatedViewPropTypes = require('../DeprecatedPropTypes/DeprecatedViewPropTypes');
+import ImageViewNativeComponent from './ImageViewNativeComponent';
+const PropTypes = require('prop-types');
+const React = require('react');
+const ReactNative = require('../Renderer/shims/ReactNative'); // eslint-disable-line no-unused-vars
+const StyleSheet = require('../StyleSheet/StyleSheet');
+const TextAncestor = require('../Text/TextAncestor');
 
-var createReactClass = require('create-react-class');
-var filterObject = require('fbjs/lib/filterObject');
-var flattenStyle = require('flattenStyle');
-var merge = require('merge');
-var requireNativeComponent = require('requireNativeComponent');
-var resolveAssetSource = require('resolveAssetSource');
+const ImageAnalyticsTagContext = require('./ImageAnalyticsTagContext').default;
+const flattenStyle = require('../StyleSheet/flattenStyle');
+const resolveAssetSource = require('./resolveAssetSource');
 
-var {
-  ImageLoader,
-} = NativeModules;
+import NativeImageLoaderAndroid from './NativeImageLoaderAndroid';
+
+const TextInlineImageNativeComponent = require('./TextInlineImageNativeComponent');
+
+import type {ImageProps as ImagePropsType} from './ImageProps';
 
 let _requestId = 1;
 function generateRequestId() {
   return _requestId++;
 }
 
-/**
- * <Image> - A react component for displaying different types of images,
- * including network images, static resources, temporary local images, and
- * images from local disk, such as the camera roll.  Example usage:
- *
- *   renderImages: function() {
- *     return (
- *       <View>
- *         <Image
- *           style={styles.icon}
- *           source={require('./myIcon.png')}
- *         />
- *         <Image
- *           style={styles.logo}
- *           source={{uri: 'https://facebook.github.io/react/logo-og.png'}}
- *         />
- *       </View>
- *     );
- *   },
- *
- * More example code in ImageExample.js
- */
-
-var ImageViewAttributes = merge(ReactNativeViewAttributes.UIView, {
-  src: true,
-  loadingIndicatorSrc: true,
-  resizeMethod: true,
-  resizeMode: true,
-  progressiveRenderingEnabled: true,
-  fadeDuration: true,
-  shouldNotifyLoadEvents: true,
-});
-
-var ViewStyleKeys = new Set(Object.keys(ViewStylePropTypes));
-var ImageSpecificStyleKeys = new Set(Object.keys(ImageStylePropTypes).filter(x => !ViewStyleKeys.has(x)));
-
-var Image = createReactClass({
-  displayName: 'Image',
-  propTypes: {
-    ...ViewPropTypes,
-    style: StyleSheetPropType(ImageStylePropTypes),
-   /**
-     * `uri` is a string representing the resource identifier for the image, which
-     * could be an http address, a local file path, or a static image
-     * resource (which should be wrapped in the `require('./path/to/image.png')` function).
-     *
-     * `headers` is an object representing the HTTP headers to send along with the request
-     * for a remote image.
-     *
-     * This prop can also contain several remote `uri`, specified together with
-     * their width and height. The native side will then choose the best `uri` to display
-     * based on the measured size of the image container.
-     */
-    source: PropTypes.oneOfType([
+const ImageProps = {
+  ...DeprecatedViewPropTypes,
+  style: (DeprecatedStyleSheetPropType(
+    DeprecatedImageStylePropTypes,
+  ): ReactPropsCheckType),
+  /**
+   * See https://reactnative.dev/docs/image.html#source
+   */
+  source: (PropTypes.oneOfType([
+    PropTypes.shape({
+      uri: PropTypes.string,
+      headers: PropTypes.objectOf(PropTypes.string),
+    }),
+    // Opaque type returned by require('./image.jpg')
+    PropTypes.number,
+    // Multiple sources
+    PropTypes.arrayOf(
       PropTypes.shape({
         uri: PropTypes.string,
+        width: PropTypes.number,
+        height: PropTypes.number,
         headers: PropTypes.objectOf(PropTypes.string),
       }),
-      // Opaque type returned by require('./image.jpg')
-      PropTypes.number,
-      // Multiple sources
-      PropTypes.arrayOf(
-        PropTypes.shape({
-          uri: PropTypes.string,
-          width: PropTypes.number,
-          height: PropTypes.number,
-          headers: PropTypes.objectOf(PropTypes.string),
-        }))
-    ]),
-    /**
-    * blurRadius: the blur radius of the blur filter added to the image
-    */
-    blurRadius: PropTypes.number,
-    /**
-     * similarly to `source`, this property represents the resource used to render
-     * the loading indicator for the image, displayed until image is ready to be
-     * displayed, typically after when it got downloaded from network.
-     */
-    loadingIndicatorSource: PropTypes.oneOfType([
-      PropTypes.shape({
-        uri: PropTypes.string,
-      }),
-      // Opaque type returned by require('./image.jpg')
-      PropTypes.number,
-    ]),
-    progressiveRenderingEnabled: PropTypes.bool,
-    fadeDuration: PropTypes.number,
-    /**
-     * Invoked on load start
-     */
-    onLoadStart: PropTypes.func,
-    /**
-     * Invoked on load error
-     */
-    onError: PropTypes.func,
-    /**
-     * Invoked when load completes successfully
-     */
-    onLoad: PropTypes.func,
-    /**
-     * Invoked when load either succeeds or fails
-     */
-    onLoadEnd: PropTypes.func,
-    /**
-     * Used to locate this view in end-to-end tests.
-     */
-    testID: PropTypes.string,
-    /**
-     * The mechanism that should be used to resize the image when the image's dimensions
-     * differ from the image view's dimensions. Defaults to `auto`.
-     *
-     * - `auto`: Use heuristics to pick between `resize` and `scale`.
-     *
-     * - `resize`: A software operation which changes the encoded image in memory before it
-     * gets decoded. This should be used instead of `scale` when the image is much larger
-     * than the view.
-     *
-     * - `scale`: The image gets drawn downscaled or upscaled. Compared to `resize`, `scale` is
-     * faster (usually hardware accelerated) and produces higher quality images. This
-     * should be used if the image is smaller than the view. It should also be used if the
-     * image is slightly bigger than the view.
-     *
-     * More details about `resize` and `scale` can be found at http://frescolib.org/docs/resizing-rotating.html.
-     *
-     * @platform android
-     */
-    resizeMethod: PropTypes.oneOf(['auto', 'resize', 'scale']),
-    /**
-     * Determines how to resize the image when the frame doesn't match the raw
-     * image dimensions.
-     *
-     * 'cover': Scale the image uniformly (maintain the image's aspect ratio)
-     * so that both dimensions (width and height) of the image will be equal
-     * to or larger than the corresponding dimension of the view (minus padding).
-     *
-     * 'contain': Scale the image uniformly (maintain the image's aspect ratio)
-     * so that both dimensions (width and height) of the image will be equal to
-     * or less than the corresponding dimension of the view (minus padding).
-     *
-     * 'stretch': Scale width and height independently, This may change the
-     * aspect ratio of the src.
-     *
-     * 'center': Scale the image down so that it is completely visible,
-     * if bigger than the area of the view.
-     * The image will not be scaled up.
-     */
-    resizeMode: PropTypes.oneOf(['cover', 'contain', 'stretch', 'center']),
-  },
-
-  statics: {
-    resizeMode: ImageResizeMode,
-
-    getSize(
-      url: string,
-      success: (width: number, height: number) => void,
-      failure?: (error: any) => void,
-    ) {
-      return ImageLoader.getSize(url)
-        .then(function(sizes) {
-          success(sizes.width, sizes.height);
-        })
-        .catch(failure || function() {
-          console.warn('Failed to get size for image: ' + url);
-        });
-    },
-
-    /**
-     * Prefetches a remote image for later use by downloading it to the disk
-     * cache
-     */
-    prefetch(url: string, callback: ?Function) {
-      const requestId = generateRequestId();
-      callback && callback(requestId);
-      return ImageLoader.prefetchImage(url, requestId);
-    },
-
-    /**
-     * Abort prefetch request
-     */
-    abortPrefetch(requestId: number) {
-      ImageLoader.abortRequest(requestId);
-    },
-
-    /**
-     * Perform cache interrogation.
-     *
-     * @param urls the list of image URLs to check the cache for.
-     * @return a mapping from url to cache status, such as "disk" or "memory". If a requested URL is
-     *         not in the mapping, it means it's not in the cache.
-     */
-    async queryCache(urls: Array<string>): Promise<Map<string, 'memory' | 'disk'>> {
-      return await ImageLoader.queryCache(urls);
-    },
-
-    /**
-     * Resolves an asset reference into an object which has the properties `uri`, `width`,
-     * and `height`. The input may either be a number (opaque type returned by
-     * require('./foo.png')) or an `ImageSource` like { uri: '<http location || file path>' }
-     */
-    resolveAssetSource: resolveAssetSource,
-  },
-
-  mixins: [NativeMethodsMixin],
-
+    ),
+  ]): React$PropType$Primitive<
+    | {
+        headers?: {[string]: string, ...},
+        uri?: string,
+        ...
+      }
+    | number
+    | Array<{
+        headers?: {[string]: string, ...},
+        height?: number,
+        uri?: string,
+        width?: number,
+        ...
+      }>,
+  >),
   /**
-   * `NativeMethodsMixin` will look for this when invoking `setNativeProps`. We
-   * make `this` look like an actual native component class.
+   * blurRadius: the blur radius of the blur filter added to the image
+   *
+   * See https://reactnative.dev/docs/image.html#blurradius
    */
-  viewConfig: {
-    uiViewClassName: 'RCTView',
-    validAttributes: ReactNativeViewAttributes.RCTView,
-  },
+  blurRadius: PropTypes.number,
+  /**
+   * See https://reactnative.dev/docs/image.html#defaultsource
+   */
+  defaultSource: PropTypes.number,
+  /**
+   * See https://reactnative.dev/docs/image.html#loadingindicatorsource
+   */
+  loadingIndicatorSource: (PropTypes.oneOfType([
+    PropTypes.shape({
+      uri: PropTypes.string,
+    }),
+    // Opaque type returned by require('./image.jpg')
+    PropTypes.number,
+  ]): React$PropType$Primitive<{uri?: string, ...} | number>),
+  progressiveRenderingEnabled: PropTypes.bool,
+  fadeDuration: PropTypes.number,
+  /**
+   * Analytics Tag used by this Image
+   */
+  internal_analyticTag: PropTypes.string,
+  /**
+   * Invoked on load start
+   */
+  onLoadStart: PropTypes.func,
+  /**
+   * Invoked on load error
+   */
+  onError: PropTypes.func,
+  /**
+   * Invoked when load completes successfully
+   */
+  onLoad: PropTypes.func,
+  /**
+   * Invoked when load either succeeds or fails
+   */
+  onLoadEnd: PropTypes.func,
+  /**
+   * Used to locate this view in end-to-end tests.
+   */
+  testID: PropTypes.string,
+  /**
+   * The mechanism that should be used to resize the image when the image's dimensions
+   * differ from the image view's dimensions. Defaults to `auto`.
+   *
+   * See https://reactnative.dev/docs/image.html#resizemethod
+   */
+  resizeMethod: (PropTypes.oneOf([
+    'auto',
+    'resize',
+    'scale',
+  ]): React$PropType$Primitive<'auto' | 'resize' | 'scale'>),
+  /**
+   * Determines how to resize the image when the frame doesn't match the raw
+   * image dimensions.
+   *
+   * See https://reactnative.dev/docs/image.html#resizemode
+   */
+  resizeMode: (PropTypes.oneOf([
+    'cover',
+    'contain',
+    'stretch',
+    'repeat',
+    'center',
+  ]): React$PropType$Primitive<
+    'cover' | 'contain' | 'stretch' | 'repeat' | 'center',
+  >),
+};
 
-  contextTypes: {
-    isInAParentText: PropTypes.bool
-  },
+/**
+ * Retrieve the width and height (in pixels) of an image prior to displaying it
+ *
+ * See https://reactnative.dev/docs/image.html#getsize
+ */
+function getSize(
+  url: string,
+  success: (width: number, height: number) => void,
+  failure?: (error: any) => void,
+): any {
+  return NativeImageLoaderAndroid.getSize(url)
+    .then(function(sizes) {
+      success(sizes.width, sizes.height);
+    })
+    .catch(
+      failure ||
+        function() {
+          console.warn('Failed to get size for image: ' + url);
+        },
+    );
+}
 
-  render: function() {
-    const source = resolveAssetSource(this.props.source);
-    const loadingIndicatorSource = resolveAssetSource(this.props.loadingIndicatorSource);
+/**
+ * Retrieve the width and height (in pixels) of an image prior to displaying it
+ * with the ability to provide the headers for the request
+ *
+ * See https://reactnative.dev/docs/image.html#getsizewithheaders
+ */
+function getSizeWithHeaders(
+  url: string,
+  headers: {[string]: string, ...},
+  success: (width: number, height: number) => void,
+  failure?: (error: any) => void,
+): any {
+  return NativeImageLoaderAndroid.getSizeWithHeaders(url, headers)
+    .then(function(sizes) {
+      success(sizes.width, sizes.height);
+    })
+    .catch(
+      failure ||
+        function() {
+          console.warn('Failed to get size for image: ' + url);
+        },
+    );
+}
 
-    // As opposed to the ios version, here we render `null` when there is no source, source.uri
-    // or source array.
+function prefetch(url: string, callback: ?Function): any {
+  const requestId = generateRequestId();
+  callback && callback(requestId);
+  return NativeImageLoaderAndroid.prefetchImage(url, requestId);
+}
 
-    if (source && source.uri === '') {
-      console.warn('source.uri should not be an empty string');
-    }
+function abortPrefetch(requestId: number) {
+  NativeImageLoaderAndroid.abortRequest(requestId);
+}
 
-    if (this.props.src) {
-      console.warn('The <Image> component requires a `source` property rather than `src`.');
-    }
+/**
+ * Perform cache interrogation.
+ *
+ * See https://reactnative.dev/docs/image.html#querycache
+ */
+async function queryCache(
+  urls: Array<string>,
+): Promise<{[string]: 'memory' | 'disk' | 'disk/memory', ...}> {
+  return await NativeImageLoaderAndroid.queryCache(urls);
+}
 
-    if (this.props.children) {
-      throw new Error('The <Image> component cannot contain children. If you want to render content on top of the image, consider using aboslute positioning.');
-    }
+type ImageComponentStatics = $ReadOnly<{|
+  getSize: typeof getSize,
+  getSizeWithHeaders: typeof getSizeWithHeaders,
+  prefetch: typeof prefetch,
+  abortPrefetch: typeof abortPrefetch,
+  queryCache: typeof queryCache,
+  resolveAssetSource: typeof resolveAssetSource,
+  propTypes: typeof ImageProps,
+|}>;
 
-    if (source && (source.uri || Array.isArray(source))) {
-      let style;
-      let sources;
-      if (source.uri) {
-        const {width, height} = source;
-        style = flattenStyle([{width, height}, styles.base, this.props.style]);
-        sources = [{uri: source.uri}];
-      } else {
-        style = flattenStyle([styles.base, this.props.style]);
-        sources = source;
-      }
+/**
+ * A React component for displaying different types of images,
+ * including network images, static resources, temporary local images, and
+ * images from local disk, such as the camera roll.
+ *
+ * See https://reactnative.dev/docs/image.html
+ */
+let Image = (props: ImagePropsType, forwardedRef) => {
+  let source = resolveAssetSource(props.source);
+  const defaultSource = resolveAssetSource(props.defaultSource);
+  const loadingIndicatorSource = resolveAssetSource(
+    props.loadingIndicatorSource,
+  );
 
-      const {onLoadStart, onLoad, onLoadEnd, onError} = this.props;
-      const nativeProps = merge(this.props, {
-        style,
-        shouldNotifyLoadEvents: !!(onLoadStart || onLoad || onLoadEnd || onError),
-        src: sources,
-        headers: source.headers,
-        loadingIndicatorSrc: loadingIndicatorSource ? loadingIndicatorSource.uri : null,
-      });
-
-      if (this.context.isInAParentText) {
-        return <RCTTextInlineImage {...nativeProps}/>;
-      } else {
-        return <RKImage {...nativeProps}/>;
-      }
-    }
-    return null;
+  if (source && source.uri === '') {
+    console.warn('source.uri should not be an empty string');
   }
-});
 
-var styles = StyleSheet.create({
+  if (props.src) {
+    console.warn(
+      'The <Image> component requires a `source` property rather than `src`.',
+    );
+  }
+
+  if (props.children) {
+    throw new Error(
+      'The <Image> component cannot contain children. If you want to render content on top of the image, consider using the <ImageBackground> component or absolute positioning.',
+    );
+  }
+
+  if (props.defaultSource && props.loadingIndicatorSource) {
+    throw new Error(
+      'The <Image> component cannot have defaultSource and loadingIndicatorSource at the same time. Please use either defaultSource or loadingIndicatorSource.',
+    );
+  }
+
+  if (source && !source.uri && !Array.isArray(source)) {
+    source = null;
+  }
+
+  let style;
+  let sources;
+  if (source?.uri != null) {
+    const {width, height} = source;
+    style = flattenStyle([{width, height}, styles.base, props.style]);
+    sources = [{uri: source.uri}];
+  } else {
+    style = flattenStyle([styles.base, props.style]);
+    sources = source;
+  }
+
+  const {onLoadStart, onLoad, onLoadEnd, onError} = props;
+  const nativeProps = {
+    ...props,
+    style,
+    shouldNotifyLoadEvents: !!(onLoadStart || onLoad || onLoadEnd || onError),
+    src: sources,
+    /* $FlowFixMe(>=0.78.0 site=react_native_android_fb) This issue was found
+     * when making Flow check .android.js files. */
+    headers: source?.headers,
+    defaultSrc: defaultSource ? defaultSource.uri : null,
+    loadingIndicatorSrc: loadingIndicatorSource
+      ? loadingIndicatorSource.uri
+      : null,
+    ref: forwardedRef,
+  };
+
+  return (
+    <ImageAnalyticsTagContext.Consumer>
+      {analyticTag => {
+        const nativePropsWithAnalytics =
+          analyticTag !== null
+            ? {
+                ...nativeProps,
+                internal_analyticTag: analyticTag,
+              }
+            : nativeProps;
+        return (
+          <TextAncestor.Consumer>
+            {hasTextAncestor =>
+              hasTextAncestor ? (
+                <TextInlineImageNativeComponent {...nativePropsWithAnalytics} />
+              ) : (
+                <ImageViewNativeComponent {...nativePropsWithAnalytics} />
+              )
+            }
+          </TextAncestor.Consumer>
+        );
+      }}
+    </ImageAnalyticsTagContext.Consumer>
+  );
+};
+
+Image = React.forwardRef<
+  ImagePropsType,
+  | React.ElementRef<typeof TextInlineImageNativeComponent>
+  | React.ElementRef<typeof ImageViewNativeComponent>,
+>(Image);
+
+Image.displayName = 'Image';
+
+/**
+ * Retrieve the width and height (in pixels) of an image prior to displaying it
+ *
+ * See https://reactnative.dev/docs/image.html#getsize
+ */
+/* $FlowFixMe(>=0.89.0 site=react_native_android_fb) This comment suppresses an
+ * error found when Flow v0.89 was deployed. To see the error, delete this
+ * comment and run Flow. */
+Image.getSize = getSize;
+
+/**
+ * Retrieve the width and height (in pixels) of an image prior to displaying it
+ * with the ability to provide the headers for the request
+ *
+ * See https://reactnative.dev/docs/image.html#getsizewithheaders
+ */
+/* $FlowFixMe(>=0.89.0 site=react_native_android_fb) This comment suppresses an
+ * error found when Flow v0.89 was deployed. To see the error, delete this
+ * comment and run Flow. */
+Image.getSizeWithHeaders = getSizeWithHeaders;
+
+/**
+ * Prefetches a remote image for later use by downloading it to the disk
+ * cache
+ *
+ * See https://reactnative.dev/docs/image.html#prefetch
+ */
+/* $FlowFixMe(>=0.89.0 site=react_native_android_fb) This comment suppresses an
+ * error found when Flow v0.89 was deployed. To see the error, delete this
+ * comment and run Flow. */
+Image.prefetch = prefetch;
+
+/**
+ * Abort prefetch request.
+ *
+ * See https://reactnative.dev/docs/image.html#abortprefetch
+ */
+/* $FlowFixMe(>=0.89.0 site=react_native_android_fb) This comment suppresses an
+ * error found when Flow v0.89 was deployed. To see the error, delete this
+ * comment and run Flow. */
+Image.abortPrefetch = abortPrefetch;
+
+/**
+ * Perform cache interrogation.
+ *
+ * See https://reactnative.dev/docs/image.html#querycache
+ */
+/* $FlowFixMe(>=0.89.0 site=react_native_android_fb) This comment suppresses an
+ * error found when Flow v0.89 was deployed. To see the error, delete this
+ * comment and run Flow. */
+Image.queryCache = queryCache;
+
+/**
+ * Resolves an asset reference into an object.
+ *
+ * See https://reactnative.dev/docs/image.html#resolveassetsource
+ */
+/* $FlowFixMe(>=0.89.0 site=react_native_android_fb) This comment suppresses an
+ * error found when Flow v0.89 was deployed. To see the error, delete this
+ * comment and run Flow. */
+Image.resolveAssetSource = resolveAssetSource;
+
+/* $FlowFixMe(>=0.89.0 site=react_native_android_fb) This comment suppresses an
+ * error found when Flow v0.89 was deployed. To see the error, delete this
+ * comment and run Flow. */
+Image.propTypes = ImageProps;
+
+const styles = StyleSheet.create({
   base: {
     overflow: 'hidden',
   },
 });
 
-var cfg = {
-  nativeOnly: {
-    src: true,
-    headers: true,
-    loadingIndicatorSrc: true,
-    shouldNotifyLoadEvents: true,
-  },
-};
-var RKImage = requireNativeComponent('RCTImageView', Image, cfg);
-var RCTTextInlineImage = requireNativeComponent('RCTTextInlineImage', Image, cfg);
-
-module.exports = Image;
+module.exports = ((Image: any): React.AbstractComponent<
+  ImagePropsType,
+  | React.ElementRef<typeof TextInlineImageNativeComponent>
+  | React.ElementRef<typeof ImageViewNativeComponent>,
+> &
+  ImageComponentStatics);

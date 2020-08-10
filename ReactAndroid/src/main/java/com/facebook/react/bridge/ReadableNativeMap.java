@@ -1,18 +1,20 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.bridge;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import com.facebook.infer.annotation.Assertions;
 import com.facebook.jni.HybridData;
 import com.facebook.proguard.annotations.DoNotStrip;
-
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
 /**
  * Implementation of a read-only map in native memory. This will generally be constructed and filled
@@ -28,60 +30,205 @@ public class ReadableNativeMap extends NativeMap implements ReadableMap {
     super(hybridData);
   }
 
-  @Override
-  public native boolean hasKey(String name);
-  @Override
-  public native boolean isNull(String name);
-  @Override
-  public native boolean getBoolean(String name);
-  @Override
-  public native double getDouble(String name);
-  @Override
-  public native int getInt(String name);
-  @Override
-  public native String getString(String name);
-  @Override
-  public native ReadableNativeArray getArray(String name);
-  @Override
-  public native ReadableNativeMap getMap(String name);
-  @Override
-  public native ReadableType getType(String name);
+  private @Nullable String[] mKeys;
+  private @Nullable HashMap<String, Object> mLocalMap;
+  private @Nullable HashMap<String, ReadableType> mLocalTypeMap;
+  private static int mJniCallCounter;
+
+  public static int getJNIPassCounter() {
+    return mJniCallCounter;
+  }
+
+  private HashMap<String, Object> getLocalMap() {
+    if (mLocalMap != null) {
+      return mLocalMap;
+    }
+    synchronized (this) {
+      if (mKeys == null) {
+        mKeys = Assertions.assertNotNull(importKeys());
+        mJniCallCounter++;
+      }
+      if (mLocalMap == null) {
+        Object[] values = Assertions.assertNotNull(importValues());
+        mJniCallCounter++;
+        int length = mKeys.length;
+        mLocalMap = new HashMap<>(length);
+        for (int i = 0; i < length; i++) {
+          mLocalMap.put(mKeys[i], values[i]);
+        }
+      }
+    }
+    return mLocalMap;
+  }
+
+  private native String[] importKeys();
+
+  private native Object[] importValues();
+
+  private @NonNull HashMap<String, ReadableType> getLocalTypeMap() {
+    if (mLocalTypeMap != null) {
+      return mLocalTypeMap;
+    }
+    synchronized (this) {
+      if (mKeys == null) {
+        mKeys = Assertions.assertNotNull(importKeys());
+        mJniCallCounter++;
+      }
+      // check that no other thread has already updated
+      if (mLocalTypeMap == null) {
+        Object[] types = Assertions.assertNotNull(importTypes());
+        mJniCallCounter++;
+        int length = mKeys.length;
+        mLocalTypeMap = new HashMap<>(length);
+        for (int i = 0; i < length; i++) {
+          mLocalTypeMap.put(mKeys[i], (ReadableType) types[i]);
+        }
+      }
+    }
+    return mLocalTypeMap;
+  }
+
+  private native Object[] importTypes();
 
   @Override
-  public Dynamic getDynamic(String name) {
+  public boolean hasKey(@NonNull String name) {
+    return getLocalMap().containsKey(name);
+  }
+
+  @Override
+  public boolean isNull(@NonNull String name) {
+    if (getLocalMap().containsKey(name)) {
+      return getLocalMap().get(name) == null;
+    }
+    throw new NoSuchKeyException(name);
+  }
+
+  private @NonNull Object getValue(@NonNull String name) {
+    if (hasKey(name) && !(isNull(name))) {
+      return Assertions.assertNotNull(getLocalMap().get(name));
+    }
+    throw new NoSuchKeyException(name);
+  }
+
+  private <T> T getValue(String name, Class<T> type) {
+    Object value = getValue(name);
+    checkInstance(name, value, type);
+    return (T) value;
+  }
+
+  private @Nullable Object getNullableValue(String name) {
+    if (hasKey(name)) {
+      return getLocalMap().get(name);
+    }
+    throw new NoSuchKeyException(name);
+  }
+
+  private @Nullable <T> T getNullableValue(String name, Class<T> type) {
+    Object value = getNullableValue(name);
+    checkInstance(name, value, type);
+    return (T) value;
+  }
+
+  private void checkInstance(String name, Object value, Class type) {
+    if (value != null && !type.isInstance(value)) {
+      throw new UnexpectedNativeTypeException(
+          "Value for "
+              + name
+              + " cannot be cast from "
+              + value.getClass().getSimpleName()
+              + " to "
+              + type.getSimpleName());
+    }
+  }
+
+  @Override
+  public boolean getBoolean(@NonNull String name) {
+    return getValue(name, Boolean.class).booleanValue();
+  }
+
+  @Override
+  public double getDouble(@NonNull String name) {
+    return getValue(name, Double.class).doubleValue();
+  }
+
+  @Override
+  public int getInt(@NonNull String name) {
+    // All numbers coming out of native are doubles, so cast here then truncate
+    return getValue(name, Double.class).intValue();
+  }
+
+  @Override
+  public @Nullable String getString(@NonNull String name) {
+    return getNullableValue(name, String.class);
+  }
+
+  @Override
+  public @Nullable ReadableArray getArray(@NonNull String name) {
+    return getNullableValue(name, ReadableArray.class);
+  }
+
+  @Override
+  public @Nullable ReadableNativeMap getMap(@NonNull String name) {
+    return getNullableValue(name, ReadableNativeMap.class);
+  }
+
+  @Override
+  public @NonNull ReadableType getType(@NonNull String name) {
+    if (getLocalTypeMap().containsKey(name)) {
+      return Assertions.assertNotNull(getLocalTypeMap().get(name));
+    }
+    throw new NoSuchKeyException(name);
+  }
+
+  @Override
+  public @NonNull Dynamic getDynamic(@NonNull String name) {
     return DynamicFromMap.create(this, name);
   }
 
   @Override
-  public ReadableMapKeySetIterator keySetIterator() {
+  public @NonNull Iterator<Map.Entry<String, Object>> getEntryIterator() {
+    return getLocalMap().entrySet().iterator();
+  }
+
+  @Override
+  public @NonNull ReadableMapKeySetIterator keySetIterator() {
     return new ReadableNativeMapKeySetIterator(this);
   }
 
   @Override
-  public HashMap<String, Object> toHashMap() {
-    ReadableMapKeySetIterator iterator = keySetIterator();
-    HashMap<String, Object> hashMap = new HashMap<>();
+  public int hashCode() {
+    return getLocalMap().hashCode();
+  }
 
-    while (iterator.hasNextKey()) {
-      String key = iterator.nextKey();
+  @Override
+  public boolean equals(Object obj) {
+    if (!(obj instanceof ReadableNativeMap)) {
+      return false;
+    }
+    ReadableNativeMap other = (ReadableNativeMap) obj;
+    return getLocalMap().equals(other.getLocalMap());
+  }
+
+  @Override
+  public @NonNull HashMap<String, Object> toHashMap() {
+    // we can almost just return getLocalMap(), but we need to convert nested arrays and maps to the
+    // correct types first
+    HashMap<String, Object> hashMap = new HashMap<>(getLocalMap());
+    Iterator iterator = hashMap.keySet().iterator();
+
+    while (iterator.hasNext()) {
+      String key = (String) iterator.next();
       switch (getType(key)) {
         case Null:
-          hashMap.put(key, null);
-          break;
         case Boolean:
-          hashMap.put(key, getBoolean(key));
-          break;
         case Number:
-          hashMap.put(key, getDouble(key));
-          break;
         case String:
-          hashMap.put(key, getString(key));
           break;
         case Map:
-          hashMap.put(key, getMap(key).toHashMap());
+          hashMap.put(key, Assertions.assertNotNull(getMap(key)).toHashMap());
           break;
         case Array:
-          hashMap.put(key, getArray(key).toArrayList());
+          hashMap.put(key, Assertions.assertNotNull(getArray(key)).toArrayList());
           break;
         default:
           throw new IllegalArgumentException("Could not convert object with key: " + key + ".");
@@ -90,28 +237,21 @@ public class ReadableNativeMap extends NativeMap implements ReadableMap {
     return hashMap;
   }
 
-  /**
-   * Implementation of a {@link ReadableNativeMap} iterator in native memory.
-   */
-  @DoNotStrip
   private static class ReadableNativeMapKeySetIterator implements ReadableMapKeySetIterator {
-    @DoNotStrip
-    private final HybridData mHybridData;
-
-    // Need to hold a strong ref to the map so that our native references remain valid.
-    @DoNotStrip
-    private final ReadableNativeMap mMap;
+    private final Iterator<String> mIterator;
 
     public ReadableNativeMapKeySetIterator(ReadableNativeMap readableNativeMap) {
-      mMap = readableNativeMap;
-      mHybridData = initHybrid(readableNativeMap);
+      mIterator = readableNativeMap.getLocalMap().keySet().iterator();
     }
 
     @Override
-    public native boolean hasNextKey();
-    @Override
-    public native String nextKey();
+    public boolean hasNextKey() {
+      return mIterator.hasNext();
+    }
 
-    private static native HybridData initHybrid(ReadableNativeMap readableNativeMap);
+    @Override
+    public String nextKey() {
+      return mIterator.next();
+    }
   }
 }

@@ -1,10 +1,8 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @flow
  * @format
@@ -13,18 +11,25 @@
 'use strict';
 
 const React = require('react');
-const SectionList = require('SectionList');
+const SectionList = require('../SectionList');
 
-function renderMyListItem(info: {item: {title: string}, index: number}) {
+function renderMyListItem(info: {
+  item: {title: string, ...},
+  index: number,
+  ...
+}) {
   return <span />;
 }
 
-const renderMyHeader = ({section}: {section: {fooNumber: number} & Object}) => (
-  <span />
-);
+const renderMyHeader = ({
+  section,
+}: {
+  section: {fooNumber: number, ...} & Object,
+  ...
+}) => <span />;
 
 module.exports = {
-  testGoodDataWithGoodItem() {
+  testGoodDataWithGoodItem(): React.Node {
     const sections = [
       {
         key: 'a',
@@ -39,7 +44,7 @@ module.exports = {
     return <SectionList renderItem={renderMyListItem} sections={sections} />;
   },
 
-  testBadRenderItemFunction() {
+  testBadRenderItemFunction(): $TEMPORARY$array<React.Node> {
     const sections = [
       {
         key: 'a',
@@ -52,9 +57,9 @@ module.exports = {
       },
     ];
     return [
-      // $FlowExpectedError - title should be inside `item`
       <SectionList
-        renderItem={(info: {title: string}) => <span />}
+        // $FlowExpectedError - title should be inside `item`
+        renderItem={(info: {title: string, ...}) => <span />}
         sections={sections}
       />,
       <SectionList
@@ -64,7 +69,7 @@ module.exports = {
       />,
       // EverythingIsFine
       <SectionList
-        renderItem={(info: {item: {title: string}}) => <span />}
+        renderItem={(info: {item: {title: string, ...}, ...}) => <span />}
         sections={sections}
       />,
     ];
@@ -107,7 +112,6 @@ module.exports = {
     const sections = [
       {
         key: 'a',
-        // $FlowExpectedError - section has bad meta data `fooNumber` field of type string
         fooNumber: 'string',
         data: [
           {
@@ -121,6 +125,8 @@ module.exports = {
       <SectionList
         renderSectionHeader={renderMyHeader}
         renderItem={renderMyListItem}
+        /* $FlowExpectedError - section has bad meta data `fooNumber` field of
+         * type string */
         sections={sections}
       />
     );

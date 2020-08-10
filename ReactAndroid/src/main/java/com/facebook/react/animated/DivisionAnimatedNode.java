@@ -1,10 +1,8 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.animated;
@@ -14,8 +12,8 @@ import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 
 /**
- * Animated node which takes two or more value node as an input and outputs an in-order
- * division of their values.
+ * Animated node which takes two or more value node as an input and outputs an in-order division of
+ * their values.
  */
 /*package*/ class DivisionAnimatedNode extends ValueAnimatedNode {
 
@@ -23,8 +21,7 @@ import com.facebook.react.bridge.ReadableMap;
   private final int[] mInputNodes;
 
   public DivisionAnimatedNode(
-      ReadableMap config,
-      NativeAnimatedNodesManager nativeAnimatedNodesManager) {
+      ReadableMap config, NativeAnimatedNodesManager nativeAnimatedNodesManager) {
     mNativeAnimatedNodesManager = nativeAnimatedNodesManager;
     ReadableArray inputNodes = config.getArray("input");
     mInputNodes = new int[inputNodes.size()];
@@ -44,14 +41,24 @@ import com.facebook.react.bridge.ReadableMap;
           continue;
         }
         if (value == 0) {
-          throw new JSApplicationCausedNativeException("Detected a division by zero in " +
-            "Animated.divide node");
+          throw new JSApplicationCausedNativeException(
+              "Detected a division by zero in Animated.divide node with Animated ID " + mTag);
         }
         mValue /= value;
       } else {
-        throw new JSApplicationCausedNativeException("Illegal node ID set as an input for " +
-          "Animated.divide node");
+        throw new JSApplicationCausedNativeException(
+            "Illegal node ID set as an input for Animated.divide node with Animated ID " + mTag);
       }
     }
+  }
+
+  @Override
+  public String prettyPrint() {
+    return "DivisionAnimatedNode["
+        + mTag
+        + "]: input nodes: "
+        + (mInputNodes != null ? mInputNodes.toString() : "null")
+        + " - super: "
+        + super.prettyPrint();
   }
 }

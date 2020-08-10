@@ -1,14 +1,25 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.bridge;
 
 public interface JavaScriptExecutorFactory {
   JavaScriptExecutor create() throws Exception;
+
+  /**
+   * Starts the sampling profiler for this specific JavaScriptExecutor Sampling profiler is usually
+   * a singleton on the runtime, hence the method exists here and not in {@link JavaScriptExecutor}
+   */
+  void startSamplingProfiler();
+
+  /**
+   * Stops the Sampling profile
+   *
+   * @param filename The filename where the results of the sampling profiler are dumped to
+   */
+  void stopSamplingProfiler(String filename);
 }

@@ -1,35 +1,46 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @flow
- * @providesModule SyncMethodTest
+ * @format
+ * @flow strict-local
  */
+
 'use strict';
 
-var React = require('react');
-var ReactNative = require('react-native');
-var { View } = ReactNative;
+const React = require('react');
+const ReactNative = require('react-native');
+const {View} = ReactNative;
 
-const {
-  TestModule,
-  RNTesterTestModule,
-} = ReactNative.NativeModules;
+const {TestModule, RNTesterTestModule} = ReactNative.NativeModules;
 
-
-class SyncMethodTest extends React.Component<{}> {
+class SyncMethodTest extends React.Component<{...}> {
   componentDidMount() {
-    if (RNTesterTestModule.echoString('test string value') !== 'test string value') {
-      throw new Error('Something wrong with sync method export');
+    if (
+      RNTesterTestModule.echoString('test string value') !== 'test string value'
+    ) {
+      throw new Error('Something wrong with echoString sync method');
     }
     if (RNTesterTestModule.methodThatReturnsNil() != null) {
-      throw new Error('Something wrong with sync method export');
+      throw new Error('Something wrong with methodThatReturnsNil sync method');
     }
-    TestModule.markTestCompleted();
+    let response;
+    RNTesterTestModule.methodThatCallsCallbackWithString('test', echo => {
+      response = echo;
+    });
+    requestAnimationFrame(() => {
+      if (response === 'test') {
+        TestModule.markTestCompleted();
+      } else {
+        throw new Error(
+          'Something wrong with methodThatCallsCallbackWithString sync method, ' +
+            'got response ' +
+            JSON.stringify(response),
+        );
+      }
+    });
   }
 
   render(): React.Node {

@@ -1,20 +1,17 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.modules.websocket;
 
+import androidx.annotation.Nullable;
 import com.facebook.common.logging.FLog;
+import com.facebook.fbreact.specs.NativeWebSocketModuleSpec;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContext;
-import com.facebook.react.bridge.ReactContextBaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
@@ -30,8 +27,8 @@ import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.Nullable;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -39,8 +36,11 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 import okio.ByteString;
 
-@ReactModule(name = "WebSocketModule", hasConstants = false)
-public final class WebSocketModule extends ReactContextBaseJavaModule {
+@ReactModule(name = WebSocketModule.NAME, hasConstants = false)
+public final class WebSocketModule extends NativeWebSocketModuleSpec {
+  public static final String TAG = WebSocketModule.class.getSimpleName();
+
+  public static final String NAME = "WebSocketModule";
 
   public interface ContentHandler {
     void onMessage(String text, WritableMap params);
@@ -48,27 +48,29 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
     void onMessage(ByteString byteString, WritableMap params);
   }
 
-  private final Map<Integer, WebSocket> mWebSocketConnections = new HashMap<>();
-  private final Map<Integer, ContentHandler> mContentHandlers = new HashMap<>();
+  private final Map<Integer, WebSocket> mWebSocketConnections = new ConcurrentHashMap<>();
+  private final Map<Integer, ContentHandler> mContentHandlers = new ConcurrentHashMap<>();
 
-  private ReactContext mReactContext;
   private ForwardingCookieHandler mCookieHandler;
 
   public WebSocketModule(ReactApplicationContext context) {
     super(context);
-    mReactContext = context;
     mCookieHandler = new ForwardingCookieHandler(context);
   }
 
   private void sendEvent(String eventName, WritableMap params) {
-    mReactContext
-      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-      .emit(eventName, params);
+    ReactApplicationContext reactApplicationContext = getReactApplicationContextIfActiveOrWarn();
+
+    if (reactApplicationContext != null) {
+      reactApplicationContext
+          .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+          .emit(eventName, params);
+    }
   }
 
   @Override
   public String getName() {
-    return "WebSocketModule";
+    return NAME;
   }
 
   public void setContentHandler(final int id, final ContentHandler contentHandler) {
@@ -79,17 +81,19 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
     }
   }
 
-  @ReactMethod
+  @Override
   public void connect(
-    final String url,
-    @Nullable final ReadableArray protocols,
-    @Nullable final ReadableMap options,
-    final int id) {
-    OkHttpClient client = new OkHttpClient.Builder()
-      .connectTimeout(10, TimeUnit.SECONDS)
-      .writeTimeout(10, TimeUnit.SECONDS)
-      .readTimeout(0, TimeUnit.MINUTES) // Disable timeouts for read
-      .build();
+      final String url,
+      @Nullable final ReadableArray protocols,
+      @Nullable final ReadableMap options,
+      final double socketID) {
+    final int id = (int) socketID;
+    OkHttpClient client =
+        new OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(0, TimeUnit.MINUTES) // Disable timeouts for read
+            .build();
 
     Request.Builder builder = new Request.Builder().tag(id).url(url);
 
@@ -98,26 +102,29 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
       builder.addHeader("Cookie", cookie);
     }
 
-    if (options != null && options.hasKey("headers") && options.getType("headers").equals(ReadableType.Map)) {
+    boolean hasOriginHeader = false;
+
+    if (options != null
+        && options.hasKey("headers")
+        && options.getType("headers").equals(ReadableType.Map)) {
 
       ReadableMap headers = options.getMap("headers");
       ReadableMapKeySetIterator iterator = headers.keySetIterator();
 
-      if (!headers.hasKey("origin")) {
-        builder.addHeader("origin", getDefaultOrigin(url));
-      }
-
       while (iterator.hasNextKey()) {
         String key = iterator.nextKey();
         if (ReadableType.String.equals(headers.getType(key))) {
+          if (key.equalsIgnoreCase("origin")) {
+            hasOriginHeader = true;
+          }
           builder.addHeader(key, headers.getString(key));
         } else {
-          FLog.w(
-            ReactConstants.TAG,
-            "Ignoring: requested " + key + ", value not a string");
+          FLog.w(ReactConstants.TAG, "Ignoring: requested " + key + ", value not a string");
         }
       }
-    } else {
+    }
+
+    if (!hasOriginHeader) {
       builder.addHeader("origin", getDefaultOrigin(url));
     }
 
@@ -145,7 +152,13 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
             mWebSocketConnections.put(id, webSocket);
             WritableMap params = Arguments.createMap();
             params.putInt("id", id);
+            params.putString("protocol", response.header("Sec-WebSocket-Protocol", ""));
             sendEvent("websocketOpen", params);
+          }
+
+          @Override
+          public void onClosing(WebSocket websocket, int code, String reason) {
+            websocket.close(code, reason);
           }
 
           @Override
@@ -200,8 +213,9 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
     client.dispatcher().executorService().shutdown();
   }
 
-  @ReactMethod
-  public void close(int code, String reason, int id) {
+  @Override
+  public void close(double code, String reason, double socketID) {
+    int id = (int) socketID;
     WebSocket client = mWebSocketConnections.get(id);
     if (client == null) {
       // WebSocket is already closed
@@ -209,23 +223,32 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
       return;
     }
     try {
-      client.close(code, reason);
+      client.close((int) code, reason);
       mWebSocketConnections.remove(id);
       mContentHandlers.remove(id);
     } catch (Exception e) {
-      FLog.e(
-        ReactConstants.TAG,
-        "Could not close WebSocket connection for id " + id,
-        e);
+      FLog.e(ReactConstants.TAG, "Could not close WebSocket connection for id " + id, e);
     }
   }
 
-  @ReactMethod
-  public void send(String message, int id) {
+  @Override
+  public void send(String message, double socketID) {
+    final int id = (int) socketID;
     WebSocket client = mWebSocketConnections.get(id);
     if (client == null) {
-      // This is a programmer error
-      throw new RuntimeException("Cannot send a message. Unknown WebSocket id " + id);
+      // This is a programmer error -- display development warning
+      WritableMap params = Arguments.createMap();
+      params.putInt("id", id);
+      params.putString("message", "client is null");
+      sendEvent("websocketFailed", params);
+      params = Arguments.createMap();
+      params.putInt("id", id);
+      params.putInt("code", 0);
+      params.putString("reason", "client is null");
+      sendEvent("websocketClosed", params);
+      mWebSocketConnections.remove(id);
+      mContentHandlers.remove(id);
+      return;
     }
     try {
       client.send(message);
@@ -234,12 +257,24 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
     }
   }
 
-  @ReactMethod
-  public void sendBinary(String base64String, int id) {
+  @Override
+  public void sendBinary(String base64String, double socketID) {
+    final int id = (int) socketID;
     WebSocket client = mWebSocketConnections.get(id);
     if (client == null) {
-      // This is a programmer error
-      throw new RuntimeException("Cannot send a message. Unknown WebSocket id " + id);
+      // This is a programmer error -- display development warning
+      WritableMap params = Arguments.createMap();
+      params.putInt("id", id);
+      params.putString("message", "client is null");
+      sendEvent("websocketFailed", params);
+      params = Arguments.createMap();
+      params.putInt("id", id);
+      params.putInt("code", 0);
+      params.putString("reason", "client is null");
+      sendEvent("websocketClosed", params);
+      mWebSocketConnections.remove(id);
+      mContentHandlers.remove(id);
+      return;
     }
     try {
       client.send(ByteString.decodeBase64(base64String));
@@ -251,8 +286,19 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
   public void sendBinary(ByteString byteString, int id) {
     WebSocket client = mWebSocketConnections.get(id);
     if (client == null) {
-      // This is a programmer error
-      throw new RuntimeException("Cannot send a message. Unknown WebSocket id " + id);
+      // This is a programmer error -- display development warning
+      WritableMap params = Arguments.createMap();
+      params.putInt("id", id);
+      params.putString("message", "client is null");
+      sendEvent("websocketFailed", params);
+      params = Arguments.createMap();
+      params.putInt("id", id);
+      params.putInt("code", 0);
+      params.putString("reason", "client is null");
+      sendEvent("websocketClosed", params);
+      mWebSocketConnections.remove(id);
+      mContentHandlers.remove(id);
+      return;
     }
     try {
       client.send(byteString);
@@ -261,12 +307,24 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
     }
   }
 
-  @ReactMethod
-  public void ping(int id) {
+  @Override
+  public void ping(double socketID) {
+    final int id = (int) socketID;
     WebSocket client = mWebSocketConnections.get(id);
     if (client == null) {
-      // This is a programmer error
-      throw new RuntimeException("Cannot send a message. Unknown WebSocket id " + id);
+      // This is a programmer error -- display development warning
+      WritableMap params = Arguments.createMap();
+      params.putInt("id", id);
+      params.putString("message", "client is null");
+      sendEvent("websocketFailed", params);
+      params = Arguments.createMap();
+      params.putInt("id", id);
+      params.putInt("code", 0);
+      params.putString("reason", "client is null");
+      sendEvent("websocketClosed", params);
+      mWebSocketConnections.remove(id);
+      mContentHandlers.remove(id);
+      return;
     }
     try {
       client.send(ByteString.EMPTY);
@@ -294,22 +352,26 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
       String scheme = "";
 
       URI requestURI = new URI(uri);
-      if (requestURI.getScheme().equals("wss")) {
-        scheme += "https";
-      } else if (requestURI.getScheme().equals("ws")) {
-        scheme += "http";
-      } else if (requestURI.getScheme().equals("http") || requestURI.getScheme().equals("https")) {
-        scheme += requestURI.getScheme();
+      switch (requestURI.getScheme()) {
+        case "wss":
+          scheme += "https";
+          break;
+        case "ws":
+          scheme += "http";
+          break;
+        case "http":
+        case "https":
+          scheme += requestURI.getScheme();
+          break;
+        default:
+          break;
       }
 
       if (requestURI.getPort() != -1) {
-        defaultOrigin = String.format(
-          "%s://%s:%s",
-          scheme,
-          requestURI.getHost(),
-          requestURI.getPort());
+        defaultOrigin =
+            String.format("%s://%s:%s", scheme, requestURI.getHost(), requestURI.getPort());
       } else {
-        defaultOrigin = String.format("%s://%s/", scheme, requestURI.getHost());
+        defaultOrigin = String.format("%s://%s", scheme, requestURI.getHost());
       }
 
       return defaultOrigin;
@@ -339,4 +401,10 @@ public final class WebSocketModule extends ReactContextBaseJavaModule {
       throw new IllegalArgumentException("Unable to get cookie from " + uri);
     }
   }
+
+  @Override
+  public void addListener(String eventName) {}
+
+  @Override
+  public void removeListeners(double count) {}
 }

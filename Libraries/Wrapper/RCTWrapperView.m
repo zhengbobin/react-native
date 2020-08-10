@@ -1,4 +1,9 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
 #import "RCTWrapperView.h"
 
@@ -71,20 +76,20 @@
   [super invalidateIntrinsicContentSize];
 
   // Setting `intrinsicContentSize` dirties the Yoga node and
-  // enfoce Yoga to call `measure` function (backed to `measureBlock`).
+  // enforce Yoga to call `measure` function (backed to `measureBlock`).
   [_bridge.uiManager setIntrinsicContentSize:self.intrinsicContentSize forView:self];
 }
 
 - (CGSize)intrinsicContentSize
 {
-  return [self sizeThatFits:CGSizeMake(INFINITY, INFINITY)];
+  return [self sizeThatFits:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)];
 }
 
 - (CGSize)sizeThatFits:(CGSize)size
 {
   UIView *contentView = self.contentView;
   if (!contentView) {
-    return size;
+    return [super sizeThatFits:size];
   }
 
   return [contentView sizeThatFits:size];

@@ -1,15 +1,13 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule AnimatedStyle
  * @flow
  * @format
  */
+
 'use strict';
 
 const AnimatedNode = require('./AnimatedNode');
@@ -17,7 +15,7 @@ const AnimatedTransform = require('./AnimatedTransform');
 const AnimatedWithChildren = require('./AnimatedWithChildren');
 const NativeAnimatedHelper = require('../NativeAnimatedHelper');
 
-const flattenStyle = require('flattenStyle');
+const flattenStyle = require('../../../StyleSheet/flattenStyle');
 
 class AnimatedStyle extends AnimatedWithChildren {
   _style: Object;
@@ -98,20 +96,22 @@ class AnimatedStyle extends AnimatedWithChildren {
   }
 
   __makeNative() {
-    super.__makeNative();
     for (const key in this._style) {
       const value = this._style[key];
       if (value instanceof AnimatedNode) {
         value.__makeNative();
       }
     }
+    super.__makeNative();
   }
 
   __getNativeConfig(): Object {
     const styleConfig = {};
     for (const styleKey in this._style) {
       if (this._style[styleKey] instanceof AnimatedNode) {
-        styleConfig[styleKey] = this._style[styleKey].__getNativeTag();
+        const style = this._style[styleKey];
+        style.__makeNative();
+        styleConfig[styleKey] = style.__getNativeTag();
       }
       // Non-animated styles are set using `setNativeProps`, no need
       // to pass those as a part of the node config

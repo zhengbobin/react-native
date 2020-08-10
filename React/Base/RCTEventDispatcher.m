@@ -1,19 +1,18 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import "RCTEventDispatcher.h"
 
 #import "RCTAssert.h"
-#import "RCTBridge.h"
 #import "RCTBridge+Private.h"
-#import "RCTUtils.h"
+#import "RCTBridge.h"
+#import "RCTComponentEvent.h"
 #import "RCTProfile.h"
+#import "RCTUtils.h"
 
 const NSInteger RCTTextUpdateLagWarningThreshold = 3;
 
@@ -23,34 +22,35 @@ NSString *RCTNormalizeInputEventName(NSString *eventName)
     eventName = [eventName stringByReplacingCharactersInRange:(NSRange){0, 2} withString:@"top"];
   } else if (![eventName hasPrefix:@"top"]) {
     eventName = [[@"top" stringByAppendingString:[eventName substringToIndex:1].uppercaseString]
-                 stringByAppendingString:[eventName substringFromIndex:1]];
+        stringByAppendingString:[eventName substringFromIndex:1]];
   }
   return eventName;
 }
 
-static NSNumber *RCTGetEventID(id<RCTEvent> event)
+static NSNumber *RCTGetEventID(NSNumber *viewTag, NSString *eventName, uint16_t coalescingKey)
 {
-  return @(
-    event.viewTag.intValue |
-    (((uint64_t)event.eventName.hash & 0xFFFF) << 32) |
-    (((uint64_t)event.coalescingKey) << 48)
-  );
+  return @(viewTag.intValue | (((uint64_t)eventName.hash & 0xFFFF) << 32) | (((uint64_t)coalescingKey) << 48));
 }
 
-@implementation RCTEventDispatcher
-{
-  // We need this lock to protect access to _events, _eventQueue and _eventsDispatchScheduled. It's filled in on main thread and consumed on js thread.
+static uint16_t RCTUniqueCoalescingKeyGenerator = 0;
+
+@implementation RCTEventDispatcher {
+  // We need this lock to protect access to _events, _eventQueue and _eventsDispatchScheduled. It's filled in on main
+  // thread and consumed on js thread.
   NSLock *_eventQueueLock;
   // We have this id -> event mapping so we coalesce effectively.
   NSMutableDictionary<NSNumber *, id<RCTEvent>> *_events;
   // This array contains ids of events in order they come in, so we can emit them to JS in the exact same order.
   NSMutableArray<NSNumber *> *_eventQueue;
   BOOL _eventsDispatchScheduled;
-  NSMutableArray<id<RCTEventDispatcherObserver>> *_observers;
+  NSHashTable<id<RCTEventDispatcherObserver>> *_observers;
   NSLock *_observersLock;
 }
 
 @synthesize bridge = _bridge;
+@synthesize dispatchToJSThread = _dispatchToJSThread;
+@synthesize invokeJS = _invokeJS;
+@synthesize invokeJSWithModuleDotMethod = _invokeJSWithModuleDotMethod;
 
 RCT_EXPORT_MODULE()
 
@@ -61,38 +61,32 @@ RCT_EXPORT_MODULE()
   _eventQueue = [NSMutableArray new];
   _eventQueueLock = [NSLock new];
   _eventsDispatchScheduled = NO;
-  _observers = [NSMutableArray new];
+  _observers = [NSHashTable weakObjectsHashTable];
   _observersLock = [NSLock new];
 }
 
 - (void)sendAppEventWithName:(NSString *)name body:(id)body
 {
-  [_bridge enqueueJSCall:@"RCTNativeAppEventEmitter"
-                  method:@"emit"
-                    args:body ? @[name, body] : @[name]
-              completion:NULL];
+  if (_bridge) {
+    [_bridge enqueueJSCall:@"RCTNativeAppEventEmitter"
+                    method:@"emit"
+                      args:body ? @[ name, body ] : @[ name ]
+                completion:NULL];
+  } else {
+    _invokeJS(@"RCTNativeAppEventEmitter", @"emit", body ? @[ name, body ] : @[ name ]);
+  }
 }
 
 - (void)sendDeviceEventWithName:(NSString *)name body:(id)body
 {
-  [_bridge enqueueJSCall:@"RCTDeviceEventEmitter"
-                  method:@"emit"
-                    args:body ? @[name, body] : @[name]
-              completion:NULL];
-}
-
-- (void)sendInputEventWithName:(NSString *)name body:(NSDictionary *)body
-{
-  if (RCT_DEBUG) {
-    RCTAssert([body[@"target"] isKindOfClass:[NSNumber class]],
-      @"Event body dictionary must include a 'target' property containing a React tag");
+  if (_bridge) {
+    [_bridge enqueueJSCall:@"RCTDeviceEventEmitter"
+                    method:@"emit"
+                      args:body ? @[ name, body ] : @[ name ]
+                completion:NULL];
+  } else {
+    _invokeJS(@"RCTDeviceEventEmitter", @"emit", body ? @[ name, body ] : @[ name ]);
   }
-
-  name = RCTNormalizeInputEventName(name);
-  [_bridge enqueueJSCall:@"RCTEventEmitter"
-                  method:@"receiveEvent"
-                    args:body ? @[body[@"target"], name, body] : @[body[@"target"], name]
-              completion:NULL];
 }
 
 - (void)sendTextEventWithType:(RCTTextEventType)type
@@ -101,18 +95,10 @@ RCT_EXPORT_MODULE()
                           key:(NSString *)key
                    eventCount:(NSInteger)eventCount
 {
-  static NSString *events[] = {
-    @"focus",
-    @"blur",
-    @"change",
-    @"submitEditing",
-    @"endEditing",
-    @"keyPress"
-  };
+  static NSString *events[] = {@"focus", @"blur", @"change", @"submitEditing", @"endEditing", @"keyPress"};
 
   NSMutableDictionary *body = [[NSMutableDictionary alloc] initWithDictionary:@{
-    @"eventCount": @(eventCount),
-    @"target": reactTag
+    @"eventCount" : @(eventCount),
   }];
 
   if (text) {
@@ -136,10 +122,8 @@ RCT_EXPORT_MODULE()
     body[@"key"] = key;
   }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  [self sendInputEventWithName:events[type] body:body];
-#pragma clang diagnostic pop
+  RCTComponentEvent *event = [[RCTComponentEvent alloc] initWithName:events[type] viewTag:reactTag body:body];
+  [self sendEvent:event];
 }
 
 - (void)sendEvent:(id<RCTEvent>)event
@@ -154,15 +138,27 @@ RCT_EXPORT_MODULE()
 
   [_eventQueueLock lock];
 
-  NSNumber *eventID = RCTGetEventID(event);
-
-  id<RCTEvent> previousEvent = _events[eventID];
-  if (previousEvent) {
-    RCTAssert([event canCoalesce], @"Got event %@ which cannot be coalesced, but has the same eventID %@ as the previous event %@", event, eventID, previousEvent);
-    event = [previousEvent coalesceWithEvent:event];
+  NSNumber *eventID;
+  if (event.canCoalesce) {
+    eventID = RCTGetEventID(event.viewTag, event.eventName, event.coalescingKey);
+    id<RCTEvent> previousEvent = _events[eventID];
+    if (previousEvent) {
+      event = [previousEvent coalesceWithEvent:event];
+    } else {
+      [_eventQueue addObject:eventID];
+    }
   } else {
+    id<RCTEvent> previousEvent = _events[eventID];
+    eventID = RCTGetEventID(event.viewTag, event.eventName, RCTUniqueCoalescingKeyGenerator++);
+    RCTAssert(
+        previousEvent == nil,
+        @"Got event %@ which cannot be coalesced, but has the same eventID %@ as the previous event %@",
+        event,
+        eventID,
+        previousEvent);
     [_eventQueue addObject:eventID];
   }
+
   _events[eventID] = event;
 
   BOOL scheduleEventsDispatch = NO;
@@ -177,9 +173,17 @@ RCT_EXPORT_MODULE()
   [_eventQueueLock unlock];
 
   if (scheduleEventsDispatch) {
-    [_bridge dispatchBlock:^{
-      [self flushEventsQueue];
-    } queue:RCTJSThread];
+    if (_bridge) {
+      [_bridge
+          dispatchBlock:^{
+            [self flushEventsQueue];
+          }
+                  queue:RCTJSThread];
+    } else {
+      _dispatchToJSThread(^{
+        [self flushEventsQueue];
+      });
+    }
   }
 }
 
@@ -199,7 +203,11 @@ RCT_EXPORT_MODULE()
 
 - (void)dispatchEvent:(id<RCTEvent>)event
 {
-  [_bridge enqueueJSCall:[[event class] moduleDotMethod] args:[event arguments]];
+  if (_bridge) {
+    [_bridge enqueueJSCall:[[event class] moduleDotMethod] args:[event arguments]];
+  } else {
+    _invokeJSWithModuleDotMethod([[event class] moduleDotMethod], [event arguments]);
+  }
 }
 
 - (dispatch_queue_t)methodQueue
@@ -207,7 +215,7 @@ RCT_EXPORT_MODULE()
   return RCTJSThread;
 }
 
-// js thread only (which suprisingly can be the main thread, depends on used JS executor)
+// js thread only (which surprisingly can be the main thread, depends on used JS executor)
 - (void)flushEventsQueue
 {
   [_eventQueueLock lock];

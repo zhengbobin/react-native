@@ -1,35 +1,30 @@
-/**
- * Copyright (c) 2014-present, Facebook, Inc.
- * All rights reserved.
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.tests;
 
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.List;
-
 import android.app.DatePickerDialog;
 import android.content.DialogInterface;
-import android.support.v4.app.DialogFragment;
-import android.support.v4.app.Fragment;
 import android.widget.DatePicker;
-
+import androidx.fragment.app.DialogFragment;
+import androidx.fragment.app.Fragment;
 import com.facebook.react.bridge.BaseJavaModule;
-import com.facebook.react.testing.ReactInstanceSpecForTest;
-import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.JavaScriptModule;
+import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.modules.datepicker.DatePickerDialogModule;
 import com.facebook.react.testing.ReactAppInstrumentationTestCase;
+import com.facebook.react.testing.ReactInstanceSpecForTest;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.List;
 
-/**
- * Test case for {@link DatePickerDialogModule} options and callbacks.
- */
+/** Test case for {@link DatePickerDialogModule} options and callbacks. */
 public class DatePickerDialogTestCase extends ReactAppInstrumentationTestCase {
 
   private static interface DatePickerDialogTestModule extends JavaScriptModule {
@@ -79,8 +74,7 @@ public class DatePickerDialogTestCase extends ReactAppInstrumentationTestCase {
 
   @Override
   protected ReactInstanceSpecForTest createReactInstanceSpecForTest() {
-    return super.createReactInstanceSpecForTest()
-        .addNativeModule(mRecordingModule);
+    return super.createReactInstanceSpecForTest().addNativeModule(mRecordingModule);
   }
 
   @Override
@@ -106,8 +100,10 @@ public class DatePickerDialogTestCase extends ReactAppInstrumentationTestCase {
     waitForBridgeAndUIIdle();
     getInstrumentation().waitForIdleSync();
 
-    return (DialogFragment) getActivity().getSupportFragmentManager()
-        .findFragmentByTag(DatePickerDialogModule.FRAGMENT_TAG);
+    return (DialogFragment)
+        getActivity()
+            .getSupportFragmentManager()
+            .findFragmentByTag(DatePickerDialogModule.FRAGMENT_TAG);
   }
 
   public void testShowBasicDatePicker() {
@@ -140,7 +136,8 @@ public class DatePickerDialogTestCase extends ReactAppInstrumentationTestCase {
           @Override
           public void run() {
             ((DatePickerDialog) datePickerFragment.getDialog())
-                .getButton(DialogInterface.BUTTON_POSITIVE).performClick();
+                .getButton(DialogInterface.BUTTON_POSITIVE)
+                .performClick();
           }
         });
 
@@ -172,5 +169,4 @@ public class DatePickerDialogTestCase extends ReactAppInstrumentationTestCase {
     assertEquals(0, mRecordingModule.getDates().size());
     assertEquals(1, mRecordingModule.getDismissed());
   }
-
 }

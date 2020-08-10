@@ -1,14 +1,13 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import <Foundation/Foundation.h>
 
+// Keep this in sync with _labelsForTags
 typedef NS_ENUM(NSUInteger, RCTPLTag) {
   RCTPLScriptDownload = 0,
   RCTPLScriptExecution,
@@ -21,14 +20,14 @@ typedef NS_ENUM(NSUInteger, RCTPLTag) {
   RCTPLNativeModuleInit,
   RCTPLNativeModuleMainThread,
   RCTPLNativeModulePrepareConfig,
-  RCTPLNativeModuleInjectConfig,
   RCTPLNativeModuleMainThreadUsesCount,
+  RCTPLNativeModuleSetup,
+  RCTPLTurboModuleSetup,
   RCTPLJSCWrapperOpenLibrary,
-  RCTPLJSCExecutorSetup,
   RCTPLBridgeStartup,
   RCTPLTTI,
   RCTPLBundleSize,
-  RCTPLSize
+  RCTPLSize // This is used to count the size
 };
 
 @interface RCTPerformanceLogger : NSObject

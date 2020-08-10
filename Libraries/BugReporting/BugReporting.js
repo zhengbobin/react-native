@@ -1,28 +1,32 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule BugReporting
- * @flow
+ * @format
+ * @flow strict-local
  */
+
 'use strict';
 
-const RCTDeviceEventEmitter = require('RCTDeviceEventEmitter');
-const Map = require('Map');
-const infoLog = require('infoLog');
+import RCTDeviceEventEmitter from '../EventEmitter/RCTDeviceEventEmitter';
+import NativeRedBox from '../NativeModules/specs/NativeRedBox';
+import {type EventSubscription} from '../vendor/emitter/EventEmitter';
+import NativeBugReporting from './NativeBugReporting';
 
-import type EmitterSubscription from 'EmitterSubscription';
-
-type ExtraData = { [key: string]: string };
+type ExtraData = {[key: string]: string, ...};
 type SourceCallback = () => string;
-type DebugData = { extras: ExtraData, files: ExtraData };
+type DebugData = {
+  extras: ExtraData,
+  files: ExtraData,
+  ...
+};
 
 function defaultExtras() {
-  BugReporting.addFileSource('react_hierarchy.txt', () => require('dumpReactTree')());
+  BugReporting.addFileSource('react_hierarchy.txt', () =>
+    require('./dumpReactTree')(),
+  );
 }
 
 /**
@@ -34,13 +38,25 @@ function defaultExtras() {
 class BugReporting {
   static _extraSources: Map<string, SourceCallback> = new Map();
   static _fileSources: Map<string, SourceCallback> = new Map();
-  static _subscription: ?EmitterSubscription = null;
+  static _subscription: ?EventSubscription = null;
+  static _redboxSubscription: ?EventSubscription = null;
 
   static _maybeInit() {
     if (!BugReporting._subscription) {
-      BugReporting._subscription = RCTDeviceEventEmitter
-          .addListener('collectBugExtraData', BugReporting.collectExtraData, null);
+      BugReporting._subscription = RCTDeviceEventEmitter.addListener(
+        'collectBugExtraData',
+        BugReporting.collectExtraData,
+        null,
+      );
       defaultExtras();
+    }
+
+    if (!BugReporting._redboxSubscription) {
+      BugReporting._redboxSubscription = RCTDeviceEventEmitter.addListener(
+        'collectRedBoxExtraData',
+        BugReporting.collectExtraData,
+        null,
+      );
     }
   }
 
@@ -52,7 +68,10 @@ class BugReporting {
    *
    * Conflicts trample with a warning.
    */
-  static addSource(key: string, callback: SourceCallback): {remove: () => void} {
+  static addSource(
+    key: string,
+    callback: SourceCallback,
+  ): {remove: () => void, ...} {
     return this._addSource(key, callback, BugReporting._extraSources);
   }
 
@@ -64,17 +83,30 @@ class BugReporting {
    *
    * Conflicts trample with a warning.
    */
-  static addFileSource(key: string, callback: SourceCallback): {remove: () => void} {
+  static addFileSource(
+    key: string,
+    callback: SourceCallback,
+  ): {remove: () => void, ...} {
     return this._addSource(key, callback, BugReporting._fileSources);
   }
 
-  static _addSource(key: string, callback: SourceCallback, source: Map<string, SourceCallback>): {remove: () => void} {
+  static _addSource(
+    key: string,
+    callback: SourceCallback,
+    source: Map<string, SourceCallback>,
+  ): {remove: () => void, ...} {
     BugReporting._maybeInit();
     if (source.has(key)) {
-      console.warn(`BugReporting.add* called multiple times for same key '${key}'`);
+      console.warn(
+        `BugReporting.add* called multiple times for same key '${key}'`,
+      );
     }
     source.set(key, callback);
-    return {remove: () => { source.delete(key); }};
+    return {
+      remove: () => {
+        source.delete(key);
+      },
+    };
   }
 
   /**
@@ -92,13 +124,16 @@ class BugReporting {
     for (const [key, callback] of BugReporting._fileSources) {
       fileData[key] = callback();
     }
-    infoLog('BugReporting extraData:', extraData);
-    const BugReportingNativeModule = require('NativeModules').BugReporting;
-    BugReportingNativeModule &&
-      BugReportingNativeModule.setExtraData &&
-      BugReportingNativeModule.setExtraData(extraData, fileData);
 
-    return { extras: extraData, files: fileData };
+    if (NativeBugReporting != null && NativeBugReporting.setExtraData != null) {
+      NativeBugReporting.setExtraData(extraData, fileData);
+    }
+
+    if (NativeRedBox != null && NativeRedBox.setExtraData != null) {
+      NativeRedBox.setExtraData(extraData, 'From BugReporting.js');
+    }
+
+    return {extras: extraData, files: fileData};
   }
 }
 

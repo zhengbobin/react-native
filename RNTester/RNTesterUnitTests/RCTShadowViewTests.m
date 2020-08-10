@@ -1,11 +1,8 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import <XCTest/XCTest.h>
@@ -88,7 +85,7 @@
   [self.parentView insertReactSubview:mainView atIndex:1];
   [self.parentView insertReactSubview:footerView atIndex:2];
 
-  [self.parentView collectViewsWithUpdatedFrames];
+  [self.parentView layoutWithAffectedShadowViews:[NSHashTable weakObjectsHashTable]];
 
   XCTAssertTrue(CGRectEqualToRect([self.parentView measureLayoutRelativeToAncestor:self.parentView], CGRectMake(0, 0, 440, 440)));
   XCTAssertTrue(UIEdgeInsetsEqualToEdgeInsets([self.parentView paddingAsInsets], UIEdgeInsetsMake(10, 10, 10, 10)));
@@ -180,7 +177,7 @@
   RCTShadowView *view = [self _shadowViewWithConfig:configBlock];
   [self.parentView insertReactSubview:view atIndex:0];
   view.intrinsicContentSize = contentSize;
-  [self.parentView collectViewsWithUpdatedFrames];
+  [self.parentView layoutWithAffectedShadowViews:[NSHashTable weakObjectsHashTable]];
   CGRect actualRect = [view measureLayoutRelativeToAncestor:self.parentView];
   XCTAssertTrue(CGRectEqualToRect(expectedRect, actualRect),
                 @"Expected layout to be %@, got %@",

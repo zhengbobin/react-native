@@ -1,27 +1,20 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.modules.storage;
 
-import javax.annotation.Nullable;
-
+import androidx.annotation.Nullable;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.WritableMap;
 
-/**
- * Helper class for database errors.
- */
+/** Helper class for database errors. */
 public class AsyncStorageErrorUtil {
 
-  /**
-   * Create Error object to be passed back to the JS callback.
-   */
+  /** Create Error object to be passed back to the JS callback. */
   /* package */ static WritableMap getError(@Nullable String key, String errorMessage) {
     WritableMap errorMap = Arguments.createMap();
     errorMap.putString("message", errorMessage);
@@ -42,6 +35,4 @@ public class AsyncStorageErrorUtil {
   /* package */ static WritableMap getDBError(@Nullable String key) {
     return getError(key, "Database Error");
   }
-
-
 }

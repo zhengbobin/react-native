@@ -1,16 +1,14 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule ErrorUtils
- * @flow
+ * @format
+ * @flow strict
  */
 
-/* eslint-disable strict */
+import type {ErrorUtilsT} from '@react-native/polyfills/error-guard';
 
 /**
  * The particular require runtime that we are using looks for a global
@@ -24,4 +22,4 @@
  * that use it aren't just using a global variable, so simply export the global
  * variable here. ErrorUtils is originally defined in a file named error-guard.js.
  */
-module.exports = global.ErrorUtils;
+module.exports = (global.ErrorUtils: ErrorUtilsT);

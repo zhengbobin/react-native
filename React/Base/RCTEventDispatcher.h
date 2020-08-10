@@ -1,18 +1,16 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import <UIKit/UIKit.h>
 
 #import <React/RCTBridge.h>
+#import <React/RCTJSInvokerModule.h>
 
-typedef NS_ENUM(NSInteger, RCTTextEventType)
-{
+typedef NS_ENUM(NSInteger, RCTTextEventType) {
   RCTTextEventTypeFocus,
   RCTTextEventTypeBlur,
   RCTTextEventTypeChange,
@@ -39,15 +37,23 @@ RCT_EXTERN NSString *RCTNormalizeInputEventName(NSString *eventName);
 
 @property (nonatomic, strong, readonly) NSNumber *viewTag;
 @property (nonatomic, copy, readonly) NSString *eventName;
-@property (nonatomic, assign, readonly) uint16_t coalescingKey;
 
 - (BOOL)canCoalesce;
-- (id<RCTEvent>)coalesceWithEvent:(id<RCTEvent>)newEvent;
 
-// used directly for doing a JS call
+/** used directly for doing a JS call */
 + (NSString *)moduleDotMethod;
-// must contain only JSON compatible values
+
+/** must contain only JSON compatible values */
 - (NSArray *)arguments;
+
+@optional
+
+/**
+ * Coalescing related methods must only be implemented if canCoalesce
+ * returns YES.
+ */
+@property (nonatomic, assign, readonly) uint16_t coalescingKey;
+- (id<RCTEvent>)coalesceWithEvent:(id<RCTEvent>)newEvent;
 
 @end
 
@@ -64,30 +70,27 @@ RCT_EXTERN NSString *RCTNormalizeInputEventName(NSString *eventName);
 
 @end
 
+@protocol RCTJSDispatcherModule
+
+@property (nonatomic, copy) void (^dispatchToJSThread)(dispatch_block_t block);
+
+@end
 
 /**
  * This class wraps the -[RCTBridge enqueueJSCall:args:] method, and
  * provides some convenience methods for generating event calls.
  */
-@interface RCTEventDispatcher : NSObject <RCTBridgeModule>
+@interface RCTEventDispatcher : NSObject <RCTBridgeModule, RCTJSDispatcherModule, RCTJSInvokerModule>
 
 /**
  * Deprecated, do not use.
  */
-- (void)sendAppEventWithName:(NSString *)name body:(id)body
-__deprecated_msg("Subclass RCTEventEmitter instead");
+- (void)sendAppEventWithName:(NSString *)name body:(id)body __deprecated_msg("Subclass RCTEventEmitter instead");
 
 /**
  * Deprecated, do not use.
  */
-- (void)sendDeviceEventWithName:(NSString *)name body:(id)body
-__deprecated_msg("Subclass RCTEventEmitter instead");
-
-/**
- * Deprecated, do not use.
- */
-- (void)sendInputEventWithName:(NSString *)name body:(NSDictionary *)body
-__deprecated_msg("Use RCTDirectEventBlock or RCTBubblingEventBlock instead");
+- (void)sendDeviceEventWithName:(NSString *)name body:(id)body __deprecated_msg("Subclass RCTEventEmitter instead");
 
 /**
  * Send a text input/focus event. For internal use only.

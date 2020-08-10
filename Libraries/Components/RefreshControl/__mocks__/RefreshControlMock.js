@@ -1,27 +1,31 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @flow
+ * @format
+ * @flow strict-local
  */
+
 'use strict';
 
-const React = require('React');
+const React = require('react');
 
-const requireNativeComponent = require('requireNativeComponent');
+const requireNativeComponent = require('../../../ReactNative/requireNativeComponent');
 
-const RCTRefreshControl = requireNativeComponent('RCTRefreshControl');
+import type {HostComponent} from '../../../Renderer/shims/ReactNativeTypes';
 
-class RefreshControlMock extends React.Component<{}> {
+const RCTRefreshControl: HostComponent<mixed> = requireNativeComponent<mixed>(
+  'RCTRefreshControl',
+);
+
+class RefreshControlMock extends React.Component<{...}> {
   static latestRef: ?RefreshControlMock;
   componentDidMount() {
     RefreshControlMock.latestRef = this;
   }
-  render() {
+  render(): React.Element<typeof RCTRefreshControl> {
     return <RCTRefreshControl />;
   }
 }

@@ -1,21 +1,18 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import <QuartzCore/QuartzCore.h>
 
-#import "RCTPerformanceLogger.h"
-#import "RCTRootView.h"
 #import "RCTLog.h"
+#import "RCTPerformanceLogger.h"
 #import "RCTProfile.h"
+#import "RCTRootView.h"
 
-@interface RCTPerformanceLogger ()
-{
+@interface RCTPerformanceLogger () {
   int64_t _data[RCTPLSize][2];
   NSUInteger _cookies[RCTPLSize];
 }
@@ -29,6 +26,7 @@
 - (instancetype)init
 {
   if (self = [super init]) {
+    // Keep this in sync with RCTPLTag
     _labelsForTags = @[
       @"ScriptDownload",
       @"ScriptExecution",
@@ -41,10 +39,10 @@
       @"NativeModuleInit",
       @"NativeModuleMainThread",
       @"NativeModulePrepareConfig",
-      @"NativeModuleInjectConfig",
       @"NativeModuleMainThreadUsesCount",
+      @"NativeModuleSetup",
+      @"TurboModuleSetup",
       @"JSCWrapperOpenLibrary",
-      @"JSCExecutorSetup",
       @"BridgeStartup",
       @"RootViewTTI",
       @"BundleSize",
@@ -65,12 +63,11 @@
   _data[tag][1] = 0;
 }
 
-
 - (void)markStopForTag:(RCTPLTag)tag
 {
 #if RCT_PROFILE
   if (RCTProfileIsProfiling()) {
-    NSString *label =_labelsForTags[tag];
+    NSString *label = _labelsForTags[tag];
     RCTProfileEndAsyncEvent(RCTProfileTagAlways, @"native", _cookies[tag], label, @"RCTPerformanceLogger");
   }
 #endif

@@ -1,24 +1,19 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.uimanager;
 
 import android.view.View;
 import android.view.ViewParent;
-
 import com.facebook.infer.annotation.Assertions;
 
 public class RootViewUtil {
 
-  /**
-   * Returns the root view of a given view in a react application.
-   */
+  /** Returns the root view of a given view in a react application. */
   public static RootView getRootView(View reactView) {
     View current = reactView;
     while (true) {

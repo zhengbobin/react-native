@@ -1,51 +1,55 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule AppContainer
  * @format
  * @flow
  */
 
 'use strict';
 
-const EmitterSubscription = require('EmitterSubscription');
-const PropTypes = require('prop-types');
-const RCTDeviceEventEmitter = require('RCTDeviceEventEmitter');
-const React = require('React');
-const ReactNative = require('ReactNative');
-const StyleSheet = require('StyleSheet');
-const View = require('View');
+import View from '../Components/View/View';
+import RCTDeviceEventEmitter from '../EventEmitter/RCTDeviceEventEmitter';
+import StyleSheet from '../StyleSheet/StyleSheet';
+import {type EventSubscription} from '../vendor/emitter/EventEmitter';
+import {RootTagContext, createRootTag} from './RootTag';
+import PropTypes from 'prop-types';
+import * as React from 'react';
 
-type Context = {
+type Context = {rootTag: number, ...};
+
+type Props = $ReadOnly<{|
+  children?: React.Node,
+  fabric?: boolean,
   rootTag: number,
-};
-type Props = {|
-  /* $FlowFixMe(>=0.53.0 site=react_native_fb,react_native_oss) This comment
-   * suppresses an error when upgrading Flow's support for React. To see the
-   * error delete this comment and run Flow. */
-  children?: React.Children,
-  rootTag: number,
-  WrapperComponent?: ?React.ComponentType<*>,
-|};
-type State = {
-  inspector: ?React.Element<any>,
+  initialProps?: {...},
+  showArchitectureIndicator?: boolean,
+  WrapperComponent?: ?React.ComponentType<any>,
+  internal_excludeLogBox?: ?boolean,
+|}>;
+
+type State = {|
+  inspector: ?React.Node,
   mainKey: number,
-};
+  hasError: boolean,
+|};
 
 class AppContainer extends React.Component<Props, State> {
   state: State = {
     inspector: null,
     mainKey: 1,
+    hasError: false,
   };
-  _mainRef: ?React.Element<any>;
-  _subscription: ?EmitterSubscription = null;
+  _mainRef: ?React.ElementRef<typeof View>;
+  _subscription: ?EventSubscription = null;
 
-  static childContextTypes = {
+  static getDerivedStateFromError: any = undefined;
+
+  static childContextTypes:
+    | any
+    | {|rootTag: React$PropType$Primitive<number>|} = {
     rootTag: PropTypes.number,
   };
 
@@ -61,17 +65,14 @@ class AppContainer extends React.Component<Props, State> {
         this._subscription = RCTDeviceEventEmitter.addListener(
           'toggleElementInspector',
           () => {
-            const Inspector = require('Inspector');
+            const Inspector = require('../Inspector/Inspector');
             const inspector = this.state.inspector ? null : (
               <Inspector
-                inspectedViewTag={ReactNative.findNodeHandle(this._mainRef)}
-                onRequestRerenderApp={updateInspectedViewTag => {
+                inspectedView={this._mainRef}
+                onRequestRerenderApp={updateInspectedView => {
                   this.setState(
                     s => ({mainKey: s.mainKey + 1}),
-                    () =>
-                      updateInspectedViewTag(
-                        ReactNative.findNodeHandle(this._mainRef),
-                      ),
+                    () => updateInspectedView(this._mainRef),
                   );
                 }}
               />
@@ -84,17 +85,21 @@ class AppContainer extends React.Component<Props, State> {
   }
 
   componentWillUnmount(): void {
-    if (this._subscription) {
+    if (this._subscription != null) {
       this._subscription.remove();
     }
   }
 
   render(): React.Node {
-    let yellowBox = null;
+    let logBox = null;
     if (__DEV__) {
-      if (!global.__RCTProfileIsProfiling) {
-        const YellowBox = require('YellowBox');
-        yellowBox = <YellowBox />;
+      if (
+        !global.__RCTProfileIsProfiling &&
+        !this.props.internal_excludeLogBox
+      ) {
+        const LogBoxNotificationContainer = require('../LogBox/LogBoxNotificationContainer')
+          .default;
+        logBox = <LogBoxNotificationContainer />;
       }
     }
 
@@ -105,9 +110,6 @@ class AppContainer extends React.Component<Props, State> {
         pointerEvents="box-none"
         style={styles.appContainer}
         ref={ref => {
-          /* $FlowFixMe(>=0.53.0 site=react_native_fb,react_native_oss) This
-           * comment suppresses an error when upgrading Flow's support for
-           * React. To see the error delete this comment and run Flow. */
           this._mainRef = ref;
         }}>
         {this.props.children}
@@ -115,15 +117,26 @@ class AppContainer extends React.Component<Props, State> {
     );
 
     const Wrapper = this.props.WrapperComponent;
-    if (Wrapper) {
-      innerView = <Wrapper>{innerView}</Wrapper>;
+    if (Wrapper != null) {
+      innerView = (
+        <Wrapper
+          initialProps={this.props.initialProps}
+          fabric={this.props.fabric === true}
+          showArchitectureIndicator={
+            this.props.showArchitectureIndicator === true
+          }>
+          {innerView}
+        </Wrapper>
+      );
     }
     return (
-      <View style={styles.appContainer} pointerEvents="box-none">
-        {innerView}
-        {yellowBox}
-        {this.state.inspector}
-      </View>
+      <RootTagContext.Provider value={createRootTag(this.props.rootTag)}>
+        <View style={styles.appContainer} pointerEvents="box-none">
+          {!this.state.hasError && innerView}
+          {this.state.inspector}
+          {logBox}
+        </View>
+      </RootTagContext.Provider>
     );
   }
 }
@@ -133,5 +146,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+if (__DEV__) {
+  if (!global.__RCTProfileIsProfiling) {
+    const LogBox = require('../LogBox/LogBox');
+    LogBox.install();
+  }
+}
 
 module.exports = AppContainer;

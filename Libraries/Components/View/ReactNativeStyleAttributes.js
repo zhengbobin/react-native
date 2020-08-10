@@ -1,39 +1,74 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule ReactNativeStyleAttributes
+ * @format strict-local
  * @flow
  */
 
 'use strict';
 
-var ImageStylePropTypes = require('ImageStylePropTypes');
-var TextStylePropTypes = require('TextStylePropTypes');
-var ViewStylePropTypes = require('ViewStylePropTypes');
+const DeprecatedImageStylePropTypes = require('../../DeprecatedPropTypes/DeprecatedImageStylePropTypes');
+const DeprecatedTextStylePropTypes = require('../../DeprecatedPropTypes/DeprecatedTextStylePropTypes');
+const DeprecatedViewStylePropTypes = require('../../DeprecatedPropTypes/DeprecatedViewStylePropTypes');
 
-/* $FlowFixMe(>=0.54.0 site=react_native_oss) This comment suppresses an error
- * found when Flow v0.54 was deployed. To see the error delete this comment and
- * run Flow. */
-var keyMirror = require('fbjs/lib/keyMirror');
-var processColor = require('processColor');
-var processTransform = require('processTransform');
-var sizesDiffer = require('sizesDiffer');
+const processColor = require('../../StyleSheet/processColor');
+const processTransform = require('../../StyleSheet/processTransform');
+const sizesDiffer = require('../../Utilities/differ/sizesDiffer');
 
-var ReactNativeStyleAttributes = {
-  ...keyMirror(ViewStylePropTypes),
-  ...keyMirror(TextStylePropTypes),
-  ...keyMirror(ImageStylePropTypes),
+type ReturnBoolType = <V>(V) => true;
+type BoolifiedDeprecatedViewStylePropTypes = $ObjMap<
+  typeof DeprecatedViewStylePropTypes,
+  ReturnBoolType,
+>;
+type BoolifiedDeprecatedTextStylePropTypes = $ObjMapi<
+  typeof DeprecatedTextStylePropTypes,
+  ReturnBoolType,
+>;
+type BoolifiedDeprecatedImageStylePropTypes = $ObjMapi<
+  typeof DeprecatedImageStylePropTypes,
+  ReturnBoolType,
+>;
+
+type StyleAttributesType = {
+  ...BoolifiedDeprecatedViewStylePropTypes,
+  ...BoolifiedDeprecatedTextStylePropTypes,
+  ...BoolifiedDeprecatedImageStylePropTypes,
+  transform: $ReadOnly<{|process: typeof processTransform|}> | true,
+  shadowOffset: $ReadOnly<{|diff: typeof sizesDiffer|}> | true,
+  backgroundColor: typeof colorAttributes | true,
+  borderBottomColor: typeof colorAttributes | true,
+  borderColor: typeof colorAttributes | true,
+  borderLeftColor: typeof colorAttributes | true,
+  borderRightColor: typeof colorAttributes | true,
+  borderTopColor: typeof colorAttributes | true,
+  borderStartColor: typeof colorAttributes | true,
+  borderEndColor: typeof colorAttributes | true,
+  color: typeof colorAttributes | true,
+  shadowColor: typeof colorAttributes | true,
+  textDecorationColor: typeof colorAttributes | true,
+  tintColor: typeof colorAttributes | true,
+  textShadowColor: typeof colorAttributes | true,
+  overlayColor: typeof colorAttributes | true,
+  ...
 };
 
-ReactNativeStyleAttributes.transform = { process: processTransform };
-ReactNativeStyleAttributes.shadowOffset = { diff: sizesDiffer };
+const ReactNativeStyleAttributes: StyleAttributesType = {};
 
-var colorAttributes = { process: processColor };
+for (const attributeName of Object.keys({
+  ...DeprecatedViewStylePropTypes,
+  ...DeprecatedTextStylePropTypes,
+  ...DeprecatedImageStylePropTypes,
+})) {
+  ReactNativeStyleAttributes[attributeName] = true;
+}
+
+ReactNativeStyleAttributes.transform = {process: processTransform};
+ReactNativeStyleAttributes.shadowOffset = {diff: sizesDiffer};
+
+const colorAttributes = {process: processColor};
 ReactNativeStyleAttributes.backgroundColor = colorAttributes;
 ReactNativeStyleAttributes.borderBottomColor = colorAttributes;
 ReactNativeStyleAttributes.borderColor = colorAttributes;

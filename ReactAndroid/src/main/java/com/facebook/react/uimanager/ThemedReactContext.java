@@ -1,41 +1,46 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.uimanager;
 
-import javax.annotation.Nullable;
-
 import android.app.Activity;
 import android.content.Context;
-
+import androidx.annotation.Nullable;
+import com.facebook.react.bridge.JSIModule;
+import com.facebook.react.bridge.JSIModuleType;
+import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContext;
-import com.facebook.react.bridge.LifecycleEventListener;
-
-//
 
 /**
- * Wraps {@link ReactContext} with the base {@link Context} passed into the constructor.
- * It provides also a way to start activities using the viewContext to which RN native views belong.
- * It delegates lifecycle listener registration to the original instance of {@link ReactContext}
- * which is supposed to receive the lifecycle events. At the same time we disallow receiving
- * lifecycle events for this wrapper instances.
- * TODO: T7538544 Rename ThemedReactContext to be in alignment with name of ReactApplicationContext
+ * Wraps {@link ReactContext} with the base {@link Context} passed into the constructor. It provides
+ * also a way to start activities using the viewContext to which RN native views belong. It
+ * delegates lifecycle listener registration to the original instance of {@link ReactContext} which
+ * is supposed to receive the lifecycle events. At the same time we disallow receiving lifecycle
+ * events for this wrapper instances. TODO: T7538544 Rename ThemedReactContext to be in alignment
+ * with name of ReactApplicationContext
  */
 public class ThemedReactContext extends ReactContext {
 
   private final ReactApplicationContext mReactApplicationContext;
+  @Nullable private final String mSurfaceID;
 
   public ThemedReactContext(ReactApplicationContext reactApplicationContext, Context base) {
+    this(reactApplicationContext, base, null);
+  }
+
+  public ThemedReactContext(
+      ReactApplicationContext reactApplicationContext, Context base, @Nullable String surfaceID) {
     super(base);
-    initializeWithInstance(reactApplicationContext.getCatalystInstance());
+    if (reactApplicationContext.hasCatalystInstance()) {
+      initializeWithInstance(reactApplicationContext.getCatalystInstance());
+    }
     mReactApplicationContext = reactApplicationContext;
+    mSurfaceID = surfaceID;
   }
 
   @Override
@@ -56,5 +61,30 @@ public class ThemedReactContext extends ReactContext {
   @Override
   public @Nullable Activity getCurrentActivity() {
     return mReactApplicationContext.getCurrentActivity();
+  }
+
+  /**
+   * @return a {@link String} that represents the ID of the js application that is being rendered
+   *     with this {@link ThemedReactContext}
+   */
+  public @Nullable String getSurfaceID() {
+    return mSurfaceID;
+  }
+
+  public ReactApplicationContext getReactApplicationContext() {
+    return mReactApplicationContext;
+  }
+
+  @Override
+  public boolean isBridgeless() {
+    return mReactApplicationContext.isBridgeless();
+  }
+
+  @Override
+  public JSIModule getJSIModule(JSIModuleType moduleType) {
+    if (isBridgeless()) {
+      return mReactApplicationContext.getJSIModule(moduleType);
+    }
+    return super.getJSIModule(moduleType);
   }
 }

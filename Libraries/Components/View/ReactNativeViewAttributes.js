@@ -1,42 +1,44 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule ReactNativeViewAttributes
- * @flow
+ * @flow strict-local
+ * @format
  */
+
 'use strict';
 
-var ReactNativeStyleAttributes = require('ReactNativeStyleAttributes');
+const ReactNativeStyleAttributes = require('./ReactNativeStyleAttributes');
 
-var ReactNativeViewAttributes = {};
-
-ReactNativeViewAttributes.UIView = {
+const UIView = {
   pointerEvents: true,
   accessible: true,
+  accessibilityActions: true,
   accessibilityLabel: true,
-  accessibilityComponentType: true,
   accessibilityLiveRegion: true,
-  accessibilityTraits: true,
+  accessibilityRole: true,
+  accessibilityState: true,
+  accessibilityValue: true,
+  accessibilityHint: true,
   importantForAccessibility: true,
   nativeID: true,
   testID: true,
   renderToHardwareTextureAndroid: true,
   shouldRasterizeIOS: true,
   onLayout: true,
+  onAccessibilityAction: true,
   onAccessibilityTap: true,
   onMagicTap: true,
+  onAccessibilityEscape: true,
   collapsable: true,
   needsOffscreenAlphaCompositing: true,
   style: ReactNativeStyleAttributes,
 };
 
-ReactNativeViewAttributes.RCTView = {
-  ...ReactNativeViewAttributes.UIView,
+const RCTView = {
+  ...UIView,
 
   // This is a special performance property exposed by RCTView and useful for
   // scrolling content when there are many subviews, most of which are offscreen.
@@ -44,6 +46,11 @@ ReactNativeViewAttributes.RCTView = {
   // many subviews that extend outside its bound. The subviews must also have
   // overflow: hidden, as should the containing view (or one of its superviews).
   removeClippedSubviews: true,
+};
+
+const ReactNativeViewAttributes = {
+  UIView: UIView,
+  RCTView: RCTView,
 };
 
 module.exports = ReactNativeViewAttributes;

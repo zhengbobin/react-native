@@ -1,30 +1,23 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc. All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the LICENSE file in the root
- * directory of this source tree. An additional grant of patent rights can be found in the PATENTS
- * file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.packagerconnection;
 
-import java.util.Map;
-
 import android.net.Uri;
-
+import androidx.annotation.Nullable;
 import com.facebook.common.logging.FLog;
 import com.facebook.react.modules.systeminfo.AndroidInfoHelpers;
-
+import java.util.Map;
 import okio.ByteString;
-
 import org.json.JSONObject;
 
-/**
- * A client for packager that uses WebSocket connection.
- */
-final public class JSPackagerClient implements ReconnectingWebSocket.MessageCallback {
+/** A client for packager that uses WebSocket connection. */
+public final class JSPackagerClient implements ReconnectingWebSocket.MessageCallback {
   private static final String TAG = JSPackagerClient.class.getSimpleName();
-  private static final String PACKAGER_CONNECTION_URL_FORMAT = "ws://%s/message?device=%s&app=%s&context=%s";
   private static final int PROTOCOL_VERSION = 2;
 
   private class ResponderImpl implements Responder {
@@ -62,19 +55,31 @@ final public class JSPackagerClient implements ReconnectingWebSocket.MessageCall
   private ReconnectingWebSocket mWebSocket;
   private Map<String, RequestHandler> mRequestHandlers;
 
-  public JSPackagerClient(String clientId, PackagerConnectionSettings settings, Map<String, RequestHandler> requestHandlers) {
+  public JSPackagerClient(
+      String clientId,
+      PackagerConnectionSettings settings,
+      Map<String, RequestHandler> requestHandlers) {
+    this(clientId, settings, requestHandlers, null);
+  }
+
+  public JSPackagerClient(
+      String clientId,
+      PackagerConnectionSettings settings,
+      Map<String, RequestHandler> requestHandlers,
+      @Nullable ReconnectingWebSocket.ConnectionCallback connectionCallback) {
     super();
 
     Uri.Builder builder = new Uri.Builder();
-    builder.scheme("ws")
-      .encodedAuthority(settings.getDebugServerHost())
-      .appendPath("message")
-      .appendQueryParameter("device", AndroidInfoHelpers.getFriendlyDeviceName())
-      .appendQueryParameter("app", settings.getPackageName())
-      .appendQueryParameter("clientid", clientId);
+    builder
+        .scheme("ws")
+        .encodedAuthority(settings.getDebugServerHost())
+        .appendPath("message")
+        .appendQueryParameter("device", AndroidInfoHelpers.getFriendlyDeviceName())
+        .appendQueryParameter("app", settings.getPackageName())
+        .appendQueryParameter("clientid", clientId);
     String url = builder.build().toString();
 
-    mWebSocket = new ReconnectingWebSocket(url, this, null);
+    mWebSocket = new ReconnectingWebSocket(url, this, connectionCallback);
     mRequestHandlers = requestHandlers;
   }
 
@@ -98,8 +103,7 @@ final public class JSPackagerClient implements ReconnectingWebSocket.MessageCall
 
       if (version != PROTOCOL_VERSION) {
         FLog.e(
-          TAG,
-          "Message with incompatible or missing version of protocol received: " + version);
+            TAG, "Message with incompatible or missing version of protocol received: " + version);
         return;
       }
 

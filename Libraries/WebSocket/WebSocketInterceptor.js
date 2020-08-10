@@ -1,24 +1,22 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule WebSocketInterceptor
+ * @format
  */
- 'use strict';
 
-const RCTWebSocketModule = require('NativeModules').WebSocketModule;
-const NativeEventEmitter = require('NativeEventEmitter');
+'use strict';
 
-const base64 = require('base64-js');
+import NativeEventEmitter from '../EventEmitter/NativeEventEmitter';
+import NativeWebSocketModule from './NativeWebSocketModule';
+import base64 from 'base64-js';
 
-const originalRCTWebSocketConnect = RCTWebSocketModule.connect;
-const originalRCTWebSocketSend = RCTWebSocketModule.send;
-const originalRCTWebSocketSendBinary = RCTWebSocketModule.sendBinary;
-const originalRCTWebSocketClose = RCTWebSocketModule.close;
+const originalRCTWebSocketConnect = NativeWebSocketModule.connect;
+const originalRCTWebSocketSend = NativeWebSocketModule.send;
+const originalRCTWebSocketSendBinary = NativeWebSocketModule.sendBinary;
+const originalRCTWebSocketClose = NativeWebSocketModule.close;
 
 let eventEmitter: NativeEventEmitter;
 let subscriptions: Array<EventSubscription>;
@@ -107,8 +105,9 @@ const WebSocketInterceptor = {
         if (onMessageCallback) {
           onMessageCallback(
             ev.id,
-            (ev.type === 'binary') ?
-            WebSocketInterceptor._arrayBufferToString(ev.data) : ev.data,
+            ev.type === 'binary'
+              ? WebSocketInterceptor._arrayBufferToString(ev.data)
+              : ev.data,
           );
         }
       }),
@@ -126,7 +125,7 @@ const WebSocketInterceptor = {
         if (onErrorCallback) {
           onErrorCallback(ev.id, {message: ev.message});
         }
-      })
+      }),
     ];
   },
 
@@ -134,13 +133,18 @@ const WebSocketInterceptor = {
     if (isInterceptorEnabled) {
       return;
     }
-    eventEmitter = new NativeEventEmitter(RCTWebSocketModule);
+    eventEmitter = new NativeEventEmitter(NativeWebSocketModule);
     WebSocketInterceptor._registerEvents();
 
     // Override `connect` method for all RCTWebSocketModule requests
     // to intercept the request url, protocols, options and socketId,
     // then pass them through the `connectCallback`.
-    RCTWebSocketModule.connect = function(url, protocols, options, socketId) {
+    NativeWebSocketModule.connect = function(
+      url,
+      protocols,
+      options,
+      socketId,
+    ) {
       if (connectCallback) {
         connectCallback(url, protocols, options, socketId);
       }
@@ -149,7 +153,7 @@ const WebSocketInterceptor = {
 
     // Override `send` method for all RCTWebSocketModule requests to intercept
     // the data sent, then pass them through the `sendCallback`.
-    RCTWebSocketModule.send = function(data, socketId) {
+    NativeWebSocketModule.send = function(data, socketId) {
       if (sendCallback) {
         sendCallback(data, socketId);
       }
@@ -158,7 +162,7 @@ const WebSocketInterceptor = {
 
     // Override `sendBinary` method for all RCTWebSocketModule requests to
     // intercept the data sent, then pass them through the `sendCallback`.
-    RCTWebSocketModule.sendBinary = function(data, socketId) {
+    NativeWebSocketModule.sendBinary = function(data, socketId) {
       if (sendCallback) {
         sendCallback(WebSocketInterceptor._arrayBufferToString(data), socketId);
       }
@@ -167,7 +171,7 @@ const WebSocketInterceptor = {
 
     // Override `close` method for all RCTWebSocketModule requests to intercept
     // the close information, then pass them through the `closeCallback`.
-    RCTWebSocketModule.close = function() {
+    NativeWebSocketModule.close = function() {
       if (closeCallback) {
         if (arguments.length === 3) {
           closeCallback(arguments[0], arguments[1], arguments[2]);
@@ -181,14 +185,16 @@ const WebSocketInterceptor = {
     isInterceptorEnabled = true;
   },
 
-   _arrayBufferToString(data) {
+  _arrayBufferToString(data) {
     const value = base64.toByteArray(data).buffer;
     if (value === undefined || value === null) {
       return '(no value)';
     }
-    if (typeof ArrayBuffer !== 'undefined' &&
-        typeof Uint8Array !== 'undefined' &&
-        value instanceof ArrayBuffer) {
+    if (
+      typeof ArrayBuffer !== 'undefined' &&
+      typeof Uint8Array !== 'undefined' &&
+      value instanceof ArrayBuffer
+    ) {
       return `ArrayBuffer {${String(Array.from(new Uint8Array(value)))}}`;
     }
     return value;
@@ -200,10 +206,10 @@ const WebSocketInterceptor = {
       return;
     }
     isInterceptorEnabled = false;
-    RCTWebSocketModule.send = originalRCTWebSocketSend;
-    RCTWebSocketModule.sendBinary = originalRCTWebSocketSendBinary;
-    RCTWebSocketModule.close = originalRCTWebSocketClose;
-    RCTWebSocketModule.connect = originalRCTWebSocketConnect;
+    NativeWebSocketModule.send = originalRCTWebSocketSend;
+    NativeWebSocketModule.sendBinary = originalRCTWebSocketSendBinary;
+    NativeWebSocketModule.close = originalRCTWebSocketClose;
+    NativeWebSocketModule.connect = originalRCTWebSocketConnect;
 
     connectCallback = null;
     closeCallback = null;

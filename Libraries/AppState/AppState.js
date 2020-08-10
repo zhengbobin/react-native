@@ -1,177 +1,130 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule AppState
+ * @format
  * @flow
  */
+
 'use strict';
 
-const MissingNativeEventEmitterShim = require('MissingNativeEventEmitterShim');
-const NativeEventEmitter = require('NativeEventEmitter');
-const NativeModules = require('NativeModules');
-const RCTAppState = NativeModules.AppState;
-
-const logError = require('logError');
-const invariant = require('fbjs/lib/invariant');
+import NativeEventEmitter from '../EventEmitter/NativeEventEmitter';
+import logError from '../Utilities/logError';
+import EventEmitter from '../vendor/emitter/EventEmitter';
+import NativeAppState from './NativeAppState';
+import invariant from 'invariant';
 
 /**
  * `AppState` can tell you if the app is in the foreground or background,
  * and notify you when the state changes.
  *
- * AppState is frequently used to determine the intent and proper behavior when
- * handling push notifications.
- *
- * ### App States
- *
- *  - `active` - The app is running in the foreground
- *  - `background` - The app is running in the background. The user is either
- *     in another app or on the home screen
- *  - `inactive` - This is a state that occurs when transitioning between
- *     foreground & background, and during periods of inactivity such as
- *     entering the Multitasking view or in the event of an incoming call
- *
- * For more information, see
- * [Apple's documentation](https://developer.apple.com/library/ios/documentation/iPhone/Conceptual/iPhoneOSProgrammingGuide/TheAppLifeCycle/TheAppLifeCycle.html)
- *
- * ### Basic Usage
- *
- * To see the current state, you can check `AppState.currentState`, which
- * will be kept up-to-date. However, `currentState` will be null at launch
- * while `AppState` retrieves it over the bridge.
- *
- * ```
- * import React, {Component} from 'react'
- * import {AppState, Text} from 'react-native'
- *
- * class AppStateExample extends Component {
- *
- *   state = {
- *     appState: AppState.currentState
- *   }
- *
- *   componentDidMount() {
- *     AppState.addEventListener('change', this._handleAppStateChange);
- *   }
- *
- *   componentWillUnmount() {
- *     AppState.removeEventListener('change', this._handleAppStateChange);
- *   }
- *
- *   _handleAppStateChange = (nextAppState) => {
- *     if (this.state.appState.match(/inactive|background/) && nextAppState === 'active') {
- *       console.log('App has come to the foreground!')
- *     }
- *     this.setState({appState: nextAppState});
- *   }
- *
- *   render() {
- *     return (
- *       <Text>Current state is: {this.state.appState}</Text>
- *     );
- *   }
- *
- * }
- * ```
- *
- * This example will only ever appear to say "Current state is: active" because
- * the app is only visible to the user when in the `active` state, and the null
- * state will happen only momentarily.
+ * See https://reactnative.dev/docs/appstate.html
  */
-
 class AppState extends NativeEventEmitter {
-
   _eventHandlers: Object;
+  _supportedEvents = ['change', 'memoryWarning', 'blur', 'focus'];
   currentState: ?string;
-  isAvailable: boolean = true;
+  isAvailable: boolean;
 
   constructor() {
-    super(RCTAppState);
+    super(NativeAppState);
 
     this.isAvailable = true;
-    this._eventHandlers = {
-      change: new Map(),
-      memoryWarning: new Map(),
-    };
+    this._eventHandlers = this._supportedEvents.reduce((handlers, key) => {
+      handlers[key] = new Map();
+      return handlers;
+    }, {});
 
-    // TODO: Remove the 'active' fallback after `initialAppState` is exported by
-    // the Android implementation.
-    this.currentState = RCTAppState.initialAppState || 'active';
+    this.currentState = NativeAppState.getConstants().initialAppState;
 
     let eventUpdated = false;
 
-    // TODO: this is a terrible solution - in order to ensure `currentState` prop
-    // is up to date, we have to register an observer that updates it whenever
-    // the state changes, even if nobody cares. We should just deprecate the
-    // `currentState` property and get rid of this.
-    this.addListener(
-      'appStateDidChange',
-      (appStateData) => {
-        eventUpdated = true;
-        this.currentState = appStateData.app_state;
-      }
-    );
+    // TODO: this is a terrible solution - in order to ensure `currentState`
+    // prop is up to date, we have to register an observer that updates it
+    // whenever the state changes, even if nobody cares. We should just
+    // deprecate the `currentState` property and get rid of this.
+    this.addListener('appStateDidChange', appStateData => {
+      eventUpdated = true;
+      this.currentState = appStateData.app_state;
+    });
 
     // TODO: see above - this request just populates the value of `currentState`
-    // when the module is first initialized. Would be better to get rid of the prop
-    // and expose `getCurrentAppState` method directly.
-    RCTAppState.getCurrentAppState(
-      (appStateData) => {
-        if (!eventUpdated) {
-          this.currentState = appStateData.app_state;
-        }
-      },
-      logError
-    );
+    // when the module is first initialized. Would be better to get rid of the
+    // prop and expose `getCurrentAppState` method directly.
+    NativeAppState.getCurrentAppState(appStateData => {
+      // It's possible that the state will have changed here & listeners need to be notified
+      if (!eventUpdated && this.currentState !== appStateData.app_state) {
+        this.currentState = appStateData.app_state;
+        this.emit('appStateDidChange', appStateData);
+      }
+    }, logError);
   }
 
+  // TODO: now that AppState is a subclass of NativeEventEmitter, we could
+  // deprecate `addEventListener` and `removeEventListener` and just use
+  // addListener` and `listener.remove()` directly. That will be a breaking
+  // change though, as both the method and event names are different
+  // (addListener events are currently required to be globally unique).
   /**
    * Add a handler to AppState changes by listening to the `change` event type
-   * and providing the handler
+   * and providing the handler.
    *
-   * TODO: now that AppState is a subclass of NativeEventEmitter, we could deprecate
-   * `addEventListener` and `removeEventListener` and just use `addListener` and
-   * `listener.remove()` directly. That will be a breaking change though, as both
-   * the method and event names are different (addListener events are currently
-   * required to be globally unique).
+   * See https://reactnative.dev/docs/appstate.html#addeventlistener
    */
-  addEventListener(
-    type: string,
-    handler: Function
-  ) {
+  addEventListener(type: string, handler: Function) {
     invariant(
-      ['change', 'memoryWarning'].indexOf(type) !== -1,
-      'Trying to subscribe to unknown event: "%s"', type
+      this._supportedEvents.indexOf(type) !== -1,
+      'Trying to subscribe to unknown event: "%s"',
+      type,
     );
-    if (type === 'change') {
-      this._eventHandlers[type].set(handler, this.addListener(
-        'appStateDidChange',
-        (appStateData) => {
-          handler(appStateData.app_state);
-        }
-      ));
-    } else if (type === 'memoryWarning') {
-      this._eventHandlers[type].set(handler, this.addListener(
-        'memoryWarning',
-        handler
-      ));
+
+    switch (type) {
+      case 'change': {
+        this._eventHandlers[type].set(
+          handler,
+          this.addListener('appStateDidChange', appStateData => {
+            handler(appStateData.app_state);
+          }),
+        );
+        break;
+      }
+      case 'memoryWarning': {
+        this._eventHandlers[type].set(
+          handler,
+          this.addListener('memoryWarning', handler),
+        );
+        break;
+      }
+
+      case 'blur':
+      case 'focus': {
+        this._eventHandlers[type].set(
+          handler,
+          this.addListener('appStateFocusChange', hasFocus => {
+            if (type === 'blur' && !hasFocus) {
+              handler();
+            }
+            if (type === 'focus' && hasFocus) {
+              handler();
+            }
+          }),
+        );
+      }
     }
   }
 
   /**
-   * Remove a handler by passing the `change` event type and the handler
+   * Remove a handler by passing the `change` event type and the handler.
+   *
+   * See https://reactnative.dev/docs/appstate.html#removeeventlistener
    */
-  removeEventListener(
-    type: string,
-    handler: Function
-  ) {
+  removeEventListener(type: string, handler: Function) {
     invariant(
-      ['change', 'memoryWarning'].indexOf(type) !== -1,
-      'Trying to remove listener for unknown event: "%s"', type
+      this._supportedEvents.indexOf(type) !== -1,
+      'Trying to remove listener for unknown event: "%s"',
+      type,
     );
     if (!this._eventHandlers[type].has(handler)) {
       return;
@@ -181,31 +134,46 @@ class AppState extends NativeEventEmitter {
   }
 }
 
-if (__DEV__ && !RCTAppState) {
-  class MissingNativeAppStateShim extends MissingNativeEventEmitterShim {
-    constructor() {
-      super('RCTAppState', 'AppState');
-    }
-
-    get currentState(): ?string {
-      this.throwMissingNativeModule();
-    }
-
-    addEventListener(...args: Array<any>) {
-      this.throwMissingNativeModule();
-    }
-
-    removeEventListener(...args: Array<any>) {
-      this.throwMissingNativeModule();
-    }
-  }
-
-  // This module depends on the native `RCTAppState` module. If you don't include it,
-  // `AppState.isAvailable` will return `false`, and any method calls will throw.
-  // We reassign the class variable to keep the autodoc generator happy.
-  AppState = new MissingNativeAppStateShim();
-} else {
-  AppState = new AppState();
+function throwMissingNativeModule() {
+  invariant(
+    false,
+    'Cannot use AppState module when native RCTAppState is not included in the build.\n' +
+      'Either include it, or check AppState.isAvailable before calling any methods.',
+  );
 }
 
-module.exports = AppState;
+class MissingNativeAppStateShim extends EventEmitter {
+  // AppState
+  isAvailable: boolean = false;
+  currentState: ?string = null;
+
+  addEventListener(type: string, handler: Function) {
+    throwMissingNativeModule();
+  }
+
+  removeEventListener(type: string, handler: Function) {
+    throwMissingNativeModule();
+  }
+
+  // EventEmitter
+  addListener() {
+    throwMissingNativeModule();
+  }
+
+  removeAllListeners() {
+    throwMissingNativeModule();
+  }
+
+  removeSubscription() {
+    throwMissingNativeModule();
+  }
+}
+
+// This module depends on the native `RCTAppState` module. If you don't include it,
+// `AppState.isAvailable` will return `false`, and any method calls will throw.
+// We reassign the class variable to keep the autodoc generator happy.
+const AppStateInstance: AppState | MissingNativeAppStateShim = NativeAppState
+  ? new AppState()
+  : new MissingNativeAppStateShim();
+
+module.exports = AppStateInstance;

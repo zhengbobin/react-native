@@ -1,42 +1,24 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ *
+ * @format
  */
+
 'use strict';
 
-if (!process.env.CI_USER) {
-  console.error('Missing CI_USER. Example: facebook');
+if (!process.env.GITHUB_OWNER) {
+  console.error('Missing GITHUB_OWNER. Example: facebook');
   process.exit(1);
 }
-if (!process.env.CI_REPO) {
-  console.error('Missing CI_REPO. Example: react-native');
+if (!process.env.GITHUB_REPO) {
+  console.error('Missing GITHUB_REPO. Example: react-native');
   process.exit(1);
 }
-if (!process.env.GITHUB_TOKEN) {
-  console.error('Missing GITHUB_TOKEN. Example: 5fd88b964fa214c4be2b144dc5af5d486a2f8c1e');
-  process.exit(1);
-}
-if (!process.env.PULL_REQUEST_NUMBER) {
-  console.error('Missing PULL_REQUEST_NUMBER. Example: 4687');
-  // for master branch don't throw and error
-  process.exit(0);
-}
 
-var GitHubApi = require('github');
-var path = require('path');
-
-var github = new GitHubApi({
-  version: '3.0.0',
-});
-
-github.authenticate({
-  type: 'oauth',
-  token: process.env.GITHUB_TOKEN,
-});
+const path = require('path');
 
 function push(arr, key, value) {
   if (!arr[key]) {
@@ -44,6 +26,15 @@ function push(arr, key, value) {
   }
   arr[key].push(value);
 }
+
+const converterSummary = {
+  eslint:
+    '`eslint` found some issues. Run `yarn lint --fix` to automatically fix problems.',
+  flow:
+    '`flow` found some issues. Run `yarn flow check` to analyze your code and address any errors.',
+  shellcheck:
+    '`shellcheck` found some issues. Run `yarn shellcheck` to analyze shell scripts.',
+};
 
 /**
  * There is unfortunately no standard format to report an error, so we have
@@ -57,9 +48,9 @@ function push(arr, key, value) {
  * This is an object where the keys are the path of the files and values
  * is an array of objects of the shape message and line.
  */
-var converters = {
+const converters = {
   raw: function(output, input) {
-    for (var key in input) {
+    for (let key in input) {
       input[key].forEach(function(message) {
         push(output, key, message);
       });
@@ -75,6 +66,7 @@ var converters = {
       push(output, error.message[0].path, {
         message: error.message.map(message => message.descr).join(' '),
         line: error.message[0].line,
+        converter: 'flow',
       });
     });
   },
@@ -89,37 +81,61 @@ var converters = {
         push(output, file.filePath, {
           message: message.ruleId + ': ' + message.message,
           line: message.line,
+          converter: 'eslint',
         });
       });
     });
-  }
+  },
+
+  shellcheck: function(output, input) {
+    if (!input) {
+      return;
+    }
+
+    input.forEach(function(report) {
+      push(output, report.file, {
+        message:
+          '**[SC' +
+          report.code +
+          '](https://github.com/koalaman/shellcheck/wiki/SC' +
+          report.code +
+          '):** (' +
+          report.level +
+          ') ' +
+          report.message,
+        line: report.line,
+        endLine: report.endLine,
+        column: report.column,
+        endColumn: report.endColumn,
+        converter: 'shellcheck',
+      });
+    });
+  },
 };
 
-function getShaFromPullRequest(user, repo, number, callback) {
-  github.pullRequests.get({user, repo, number}, (error, res) => {
+function getShaFromPullRequest(octokit, owner, repo, number, callback) {
+  octokit.pullRequests.get({owner, repo, number}, (error, res) => {
     if (error) {
-      console.log(error);
+      console.error(error);
       return;
     }
-    callback(res.head.sha);
+
+    callback(res.data.head.sha);
   });
 }
 
-function getFilesFromCommit(user, repo, sha, callback) {
-  github.repos.getCommit({user, repo, sha}, (error, res) => {
-    if (error) {
-      console.log(error);
-      return;
-    }
-    // A merge commit should not have any new changes to report
-    if (res.parents && res.parents.length > 1) {
-      return;
-    }
-
-    callback(res.files);
-  });
+function getFilesFromPullRequest(octokit, owner, repo, number, callback) {
+  octokit.pullRequests.listFiles(
+    {owner, repo, number, per_page: 100},
+    (error, res) => {
+      if (error) {
+        console.error(error);
+        return;
+      }
+      callback(res.data);
+    },
+  );
 }
-
 
 /**
  * Sadly we can't just give the line number to github, we have to give the
@@ -128,11 +144,11 @@ function getFilesFromCommit(user, repo, sha, callback) {
  * in the patch file
  */
 function getLineMapFromPatch(patchString) {
-  var diffLineIndex = 0;
-  var fileLineIndex = 0;
-  var lineMap = {};
+  let diffLineIndex = 0;
+  let fileLineIndex = 0;
+  let lineMap = {};
 
-  patchString.split('\n').forEach((line) => {
+  patchString.split('\n').forEach(line => {
     if (line.match(/^@@/)) {
       fileLineIndex = line.match(/\+([0-9]+)/)[1] - 1;
       return;
@@ -150,60 +166,117 @@ function getLineMapFromPatch(patchString) {
   return lineMap;
 }
 
-function sendComment(user, repo, number, sha, filename, lineMap, message) {
-  if (!lineMap[message.line]) {
-    // Do not send messages on lines that did not change
-    return;
-  }
+function sendReview(octokit, owner, repo, number, commit_id, body, comments) {
+  if (process.env.GITHUB_TOKEN) {
+    if (comments.length === 0) {
+      // Do not leave an empty review.
+      return;
+    } else if (comments.length > 5) {
+      // Avoid noisy reviews and rely solely on the body of the review.
+      comments = [];
+    }
 
-  var opts = {
-    user,
-    repo,
-    number,
-    sha,
-    path: filename,
-    commit_id: sha,
-    body: message.message,
-    position: lineMap[message.line],
-  };
-  github.pullRequests.createComment(opts, function(error, res) {
-    if (error) {
-      console.log(error);
+    const event = 'REQUEST_CHANGES';
+
+    const opts = {
+      owner,
+      repo,
+      number,
+      commit_id,
+      body,
+      event,
+      comments,
+    };
+
+    octokit.pullRequests.createReview(opts, function(error, res) {
+      if (error) {
+        console.error(error);
+        return;
+      }
+    });
+  } else {
+    if (comments.length === 0) {
+      console.log('No issues found.');
       return;
     }
-  });
-  console.log('Sending comment', opts);
+
+    if (process.env.CIRCLE_CI) {
+      console.error(
+        'Code analysis found issues, but the review cannot be posted to GitHub without an access token.',
+      );
+      process.exit(1);
+    }
+
+    let results = body + '\n';
+    comments.forEach(comment => {
+      results +=
+        comment.path + ':' + comment.position + ': ' + comment.body + '\n';
+    });
+    console.log(results);
+  }
 }
 
-function main(messages, user, repo, number) {
+function main(messages, owner, repo, number) {
   // No message, we don't need to do anything :)
   if (Object.keys(messages).length === 0) {
     return;
   }
 
-  getShaFromPullRequest(user, repo, number, (sha) => {
-    getFilesFromCommit(user, repo, sha, (files) => {
+  if (!process.env.GITHUB_TOKEN) {
+    console.log(
+      'Missing GITHUB_TOKEN. Example: 5fd88b964fa214c4be2b144dc5af5d486a2f8c1e. Review feedback with code analysis results will not be provided on GitHub without a valid token.',
+    );
+  }
+
+  // https://octokit.github.io/rest.js/
+  const {Octokit} = require('@octokit/rest');
+  const octokit = new Octokit({
+    auth: process.env.GITHUB_TOKEN,
+  });
+
+  getShaFromPullRequest(octokit, owner, repo, number, sha => {
+    getFilesFromPullRequest(octokit, owner, repo, number, files => {
+      let comments = [];
+      let convertersUsed = [];
       files
-        .filter((file) => messages[file.filename])
-        .forEach((file) => {
+        .filter(file => messages[file.filename])
+        .forEach(file => {
           // github api sometimes does not return a patch on large commits
           if (!file.patch) {
             return;
           }
-          var lineMap = getLineMapFromPatch(file.patch);
-          messages[file.filename].forEach((message) => {
-            sendComment(user, repo, number, sha, file.filename, lineMap, message);
-          });
-        });
-    });
-  });
+          const lineMap = getLineMapFromPatch(file.patch);
+          messages[file.filename].forEach(message => {
+            if (lineMap[message.line]) {
+              const comment = {
+                path: file.filename,
+                position: lineMap[message.line],
+                body: message.message,
+              };
+              convertersUsed.push(message.converter);
+              comments.push(comment);
+            }
+          }); // forEach
+        }); // filter
+
+      let body = '**Code analysis results:**\n\n';
+      const uniqueconvertersUsed = [...new Set(convertersUsed)];
+      uniqueconvertersUsed.forEach(converter => {
+        body += '* ' + converterSummary[converter] + '\n';
+      });
+
+      sendReview(octokit, owner, repo, number, sha, body, comments);
+    }); // getFilesFromPullRequest
+  }); // getShaFromPullRequest
 }
 
-var content = '';
+let content = '';
 process.stdin.resume();
-process.stdin.on('data', function(buf) { content += buf.toString(); });
+process.stdin.on('data', function(buf) {
+  content += buf.toString();
+});
 process.stdin.on('end', function() {
-  var messages = {};
+  let messages = {};
 
   // Since we send a few http requests to setup the process, we don't want
   // to run this file one time per code analysis tool. Instead, we write all
@@ -219,13 +292,13 @@ process.stdin.on('end', function() {
   //
   //   cat <(echo eslint; npm run lint --silent -- --format=json; echo flow; flow --json) | node code-analysis-bot.js
 
-  var lines = content.trim().split('\n');
-  for (var i = 0; i < Math.ceil(lines.length / 2); ++i) {
-    var converter = converters[lines[i * 2]];
+  const lines = content.trim().split('\n');
+  for (let i = 0; i < Math.ceil(lines.length / 2); ++i) {
+    const converter = converters[lines[i * 2]];
     if (!converter) {
       throw new Error('Unknown converter ' + lines[i * 2]);
     }
-    var json;
+    let json;
     try {
       json = JSON.parse(lines[i * 2 + 1]);
     } catch (e) {}
@@ -235,9 +308,9 @@ process.stdin.on('end', function() {
 
   // The paths are returned in absolute from code analysis tools but github works
   // on paths relative from the root of the project. Doing the normalization here.
-  var pwd = path.resolve('.');
-  for (var absolutePath in messages) {
-    var relativePath = path.relative(pwd, absolutePath);
+  const pwd = path.resolve('.');
+  for (let absolutePath in messages) {
+    const relativePath = path.relative(pwd, absolutePath);
     if (relativePath === absolutePath) {
       continue;
     }
@@ -245,10 +318,19 @@ process.stdin.on('end', function() {
     delete messages[absolutePath];
   }
 
-  var user = process.env.CI_USER;
-  var repo = process.env.CI_REPO;
-  var number = process.env.PULL_REQUEST_NUMBER;
+  const owner = process.env.GITHUB_OWNER;
+  const repo = process.env.GITHUB_REPO;
+
+  if (!process.env.GITHUB_PR_NUMBER) {
+    console.error(
+      'Missing GITHUB_PR_NUMBER. Example: 4687. Review feedback with code analysis results cannot be provided on GitHub without a valid pull request number.',
+    );
+    // for master branch, don't throw an error
+    process.exit(0);
+  }
+
+  const number = process.env.GITHUB_PR_NUMBER;
 
   // intentional lint warning to make sure that the bot is working :)
-  main(messages, user, repo, number);
+  main(messages, owner, repo, number);
 });

@@ -1,10 +1,8 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.modules.core;
@@ -18,8 +16,8 @@ import android.app.Activity;
 public interface PermissionListener {
 
   /**
-   * Method called whenever there's a result to a permission request. It is forwarded from
-   * {@link Activity#onRequestPermissionsResult}.
+   * Method called whenever there's a result to a permission request. It is forwarded from {@link
+   * Activity#onRequestPermissionsResult}.
    *
    * @return boolean Whether the PermissionListener can be removed.
    */

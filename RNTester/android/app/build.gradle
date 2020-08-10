@@ -1,6 +1,14 @@
-apply plugin: 'com.android.application'
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
-import com.android.build.OutputFile
+plugins {
+    id("com.android.application")
+    id("com.facebook.react.codegen")
+}
 
 /**
  * The react.gradle file registers a task for each build variant (e.g. bundleDebugJsAndAssets
@@ -53,18 +61,34 @@ import com.android.build.OutputFile
  *   // date; if you have any other folders that you want to ignore for performance reasons (gradle
  *   // indexes the entire tree), add them here. Alternatively, if you have JS files in android/
  *   // for example, you might want to remove it from here.
- *   inputExcludes: ["android/**", "ios/**"]
+ *   inputExcludes: ["android/**", "ios/**"],
+ *
+ *   // Root dir for all JS files for the app. Defaults to `root` above.
+ *   jsRootDir: "../..",
+ *
+ *   // Enable react-native-codegen during build time.
+ *   enableCodegen: true,
+ *
+ *   // Java package name to use for any codegen artifacts produced during build time.
+ *   // Defaults to "com.facebook.fbreact.specs".
+ *   codegenJavaPackageName: "com.facebook.fbreact.specs",
  * ]
  */
 
 project.ext.react = [
+    cliPath: "$rootDir/cli.js",
     bundleAssetName: "RNTesterApp.android.bundle",
     entryFile: file("../../js/RNTesterApp.android.js"),
-    root: "../../../../",
-    inputExcludes: ["android/**", "./**"]
+    root: "$rootDir",
+    inputExcludes: ["android/**", "./**", ".gradle/**"],
+    composeSourceMapsPath: "$rootDir/scripts/compose-source-maps.js",
+    hermesCommand: "../../../node_modules/hermes-engine/%OS-BIN%/hermesc",
+    enableHermesForVariant: { def v -> v.name.contains("hermes") },
+    jsRootDir: "$rootDir/RNTester",
+    enableCodegen: System.getenv('USE_CODEGEN'),
 ]
 
-apply from: "react.gradle"
+apply from: "../../../react.gradle"
 
 /**
  * Set this to true to create three separate APKs instead of one:
@@ -75,26 +99,47 @@ apply from: "react.gradle"
  * Upload all the APKs to the Play Store and people will download
  * the correct one based on the CPU architecture of their device.
  */
-def enableSeparateBuildPerCPUArchitecture = false
+def enableSeparateBuildPerCPUArchitecture = true
 
 /**
  * Run Proguard to shrink the Java bytecode in release builds.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
+
+/**
+ * Use the international variant of JavaScriptCore
+ * This variant includes the ICU i18n library to make APIs like `Date.toLocaleString`
+ * and `String.localeCompare` work when using with locales other than en-US.
+ * Note that this variant is about 6MiB larger per architecture than the default.
+ */
+def useIntlJsc = false
 
 android {
-    compileSdkVersion 23
-    buildToolsVersion "23.0.1"
+    compileSdkVersion 29
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    flavorDimensions "vm"
+    productFlavors {
+        hermes {
+            dimension "vm"
+        }
+        jsc {
+            dimension "vm"
+        }
+    }
 
     defaultConfig {
         applicationId "com.facebook.react.uiapp"
-        minSdkVersion 16
-        targetSdkVersion 23
+        minSdkVersion 19
+        targetSdkVersion 29
         versionCode 1
         versionName "1.0"
-        ndk {
-            abiFilters "armeabi-v7a", "x86"
-        }
+        testBuildType System.getProperty('testBuildType', 'debug')  // This will later be used to control the test apk build type
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     signingConfigs {
         release {
@@ -109,35 +154,59 @@ android {
             enable enableSeparateBuildPerCPUArchitecture
             universalApk false
             reset()
-            include "armeabi-v7a", "x86"
+            include "armeabi-v7a", "x86", "x86_64", "arm64-v8a"
         }
     }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.release
+        }
         release {
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
-        }
-    }
-    // applicationVariants are e.g. debug, release
-    applicationVariants.all { variant ->
-        variant.outputs.each { output ->
-            // For each separate APK per architecture, set a unique version code as described here:
-            // http://tools.android.com/tech-docs/new-build-system/user-guide/apk-splits
-            def versionCodes = ["armeabi-v7a":1, "x86":2]
-            def abi = output.getFilter(OutputFile.ABI)
-            if (abi != null) {  // null for the universal-debug, universal-release variants
-                output.versionCodeOverride =
-                        versionCodes.get(abi) * 1048576 + defaultConfig.versionCode
-            }
+            // Detox-specific additions to pro-guard
+            proguardFile "${rootProject.projectDir}/../node_modules/detox/android/detox/proguard-rules-app.pro"
         }
     }
 }
 
+configurations {
+  hermesDebugImplementation {}
+  hermesReleaseImplementation {}
+}
+
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile 'com.android.support:appcompat-v7:23.0.1'
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
 
     // Build React Native from source
-    compile project(':ReactAndroid')
+    implementation project(':ReactAndroid')
+
+    implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.0.0"
+
+    def hermesPath = '$projectDir/../../../../node_modules/hermes-engine/android/'
+    hermesDebugImplementation files(hermesPath + "hermes-debug.aar")
+    hermesReleaseImplementation files(hermesPath + "hermes-release.aar")
+
+    debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}") {
+        exclude group:'com.facebook.fbjni'
+    }
+
+    debugImplementation("com.facebook.flipper:flipper-network-plugin:${FLIPPER_VERSION}") {
+        exclude group:'com.facebook.flipper'
+    }
+
+    debugImplementation("com.facebook.flipper:flipper-fresco-plugin:${FLIPPER_VERSION}") {
+        exclude group:'com.facebook.flipper'
+    }
+
+    if (useIntlJsc) {
+        jscImplementation 'org.webkit:android-jsc-intl:+'
+    } else {
+        jscImplementation 'org.webkit:android-jsc:+'
+    }
+
+    // Use detox test library
+    androidTestImplementation('com.wix:detox:+') { transitive = true }
+    androidTestImplementation 'junit:junit:4.12'
 }

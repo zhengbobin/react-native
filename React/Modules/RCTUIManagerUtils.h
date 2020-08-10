@@ -1,13 +1,11 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
-#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
 
 #import <React/RCTAssert.h>
 #import <React/RCTDefines.h>
@@ -87,7 +85,7 @@ RCT_EXTERN BOOL RCTIsPseudoUIManagerQueue(void);
 RCT_EXTERN void RCTExecuteOnUIManagerQueue(dispatch_block_t block);
 
 /**
- * *Synchorously* executes the specified block on the UIManager queue.
+ * *Synchronously* executes the specified block on the UIManager queue.
  * Unlike `dispatch_sync()` this will execute the block immediately
  * if we're already on the UIManager queue.
  * Please do not use this unless you really know what you're doing.
@@ -97,5 +95,11 @@ RCT_EXTERN void RCTUnsafeExecuteOnUIManagerQueueSync(dispatch_block_t block);
 /**
  * Convenience macro for asserting that we're running on UIManager queue.
  */
-#define RCTAssertUIManagerQueue() RCTAssert(RCTIsUIManagerQueue() || RCTIsPseudoUIManagerQueue(), \
-@"This function must be called on the UIManager queue")
+#define RCTAssertUIManagerQueue() \
+  RCTAssert(                      \
+      RCTIsUIManagerQueue() || RCTIsPseudoUIManagerQueue(), @"This function must be called on the UIManager queue")
+
+/**
+ * Returns new unique root view tag.
+ */
+RCT_EXTERN NSNumber *RCTAllocateRootViewTag(void);

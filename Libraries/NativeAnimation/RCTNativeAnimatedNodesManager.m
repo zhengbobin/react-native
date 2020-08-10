@@ -1,36 +1,51 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
-#import "RCTNativeAnimatedNodesManager.h"
+#import <React/RCTNativeAnimatedNodesManager.h>
 
 #import <React/RCTConvert.h>
 
-#import "RCTAdditionAnimatedNode.h"
-#import "RCTAnimatedNode.h"
-#import "RCTAnimationDriver.h"
-#import "RCTDiffClampAnimatedNode.h"
-#import "RCTDivisionAnimatedNode.h"
-#import "RCTEventAnimation.h"
-#import "RCTFrameAnimation.h"
-#import "RCTDecayAnimation.h"
-#import "RCTInterpolationAnimatedNode.h"
-#import "RCTModuloAnimatedNode.h"
-#import "RCTMultiplicationAnimatedNode.h"
-#import "RCTPropsAnimatedNode.h"
-#import "RCTSpringAnimation.h"
-#import "RCTStyleAnimatedNode.h"
-#import "RCTTransformAnimatedNode.h"
-#import "RCTValueAnimatedNode.h"
+#import <React/RCTAdditionAnimatedNode.h>
+#import <React/RCTAnimatedNode.h>
+#import <React/RCTAnimationDriver.h>
+#import <React/RCTDiffClampAnimatedNode.h>
+#import <React/RCTDivisionAnimatedNode.h>
+#import <React/RCTEventAnimation.h>
+#import <React/RCTFrameAnimation.h>
+#import <React/RCTDecayAnimation.h>
+#import <React/RCTInterpolationAnimatedNode.h>
+#import <React/RCTModuloAnimatedNode.h>
+#import <React/RCTMultiplicationAnimatedNode.h>
+#import <React/RCTPropsAnimatedNode.h>
+#import <React/RCTSpringAnimation.h>
+#import <React/RCTStyleAnimatedNode.h>
+#import <React/RCTSubtractionAnimatedNode.h>
+#import <React/RCTTransformAnimatedNode.h>
+#import <React/RCTValueAnimatedNode.h>
+#import <React/RCTTrackingAnimatedNode.h>
+
+// We do some normalizing of the event names in RCTEventDispatcher#RCTNormalizeInputEventName.
+// To make things simpler just get rid of the parts we change in the event names we use here.
+// This is a lot easier than trying to denormalize because there would be multiple possible
+// denormalized forms for a single input.
+static NSString *RCTNormalizeAnimatedEventName(NSString *eventName)
+{
+  if ([eventName hasPrefix:@"on"]) {
+    return [eventName substringFromIndex:2];
+  }
+  if ([eventName hasPrefix:@"top"]) {
+    return [eventName substringFromIndex:3];
+  }
+  return eventName;
+}
 
 @implementation RCTNativeAnimatedNodesManager
 {
-  RCTUIManager *_uiManager;
+  __weak RCTBridge *_bridge;
   NSMutableDictionary<NSNumber *, RCTAnimatedNode *> *_animationNodes;
   // Mapping of a view tag and an event name to a list of event animation drivers. 99% of the time
   // there will be only one driver per mapping so all code code should be optimized around that.
@@ -39,15 +54,24 @@
   CADisplayLink *_displayLink;
 }
 
-- (instancetype)initWithUIManager:(nonnull RCTUIManager *)uiManager
+- (instancetype)initWithBridge:(nonnull RCTBridge *)bridge
 {
   if ((self = [super init])) {
-    _uiManager = uiManager;
+    _bridge = bridge;
     _animationNodes = [NSMutableDictionary new];
     _eventDrivers = [NSMutableDictionary new];
     _activeAnimations = [NSMutableSet new];
   }
   return self;
+}
+
+- (BOOL)isNodeManagedByFabric:(nonnull NSNumber *)tag
+{
+  RCTAnimatedNode *node = _animationNodes[tag];
+  if (node) {
+    return [node isManagedByFabric];
+  }
+  return false;
 }
 
 #pragma mark -- Graph
@@ -67,7 +91,9 @@
             @"division" : [RCTDivisionAnimatedNode class],
             @"multiplication" : [RCTMultiplicationAnimatedNode class],
             @"modulus" : [RCTModuloAnimatedNode class],
-            @"transform" : [RCTTransformAnimatedNode class]};
+            @"subtraction" : [RCTSubtractionAnimatedNode class],
+            @"transform" : [RCTTransformAnimatedNode class],
+            @"tracking" : [RCTTrackingAnimatedNode class]};
   });
 
   NSString *nodeType = [RCTConvert NSString:config[@"type"]];
@@ -79,6 +105,7 @@
   }
 
   RCTAnimatedNode *node = [[nodeClass alloc] initWithTag:tag config:config];
+  node.manager = self;
   _animationNodes[tag] = node;
   [node setNeedsUpdate];
 }
@@ -121,7 +148,7 @@
 {
   RCTAnimatedNode *node = _animationNodes[nodeTag];
   if ([node isKindOfClass:[RCTPropsAnimatedNode class]]) {
-    [(RCTPropsAnimatedNode *)node connectToView:viewTag viewName:viewName uiManager:_uiManager];
+    [(RCTPropsAnimatedNode *)node connectToView:viewTag viewName:viewName bridge:_bridge];
   }
   [node setNeedsUpdate];
 }
@@ -215,6 +242,17 @@
   [valueNode extractOffset];
 }
 
+- (void)getValue:(NSNumber *)nodeTag saveCallback:(RCTResponseSenderBlock)saveCallback
+{
+     RCTAnimatedNode *node = _animationNodes[nodeTag];
+     if (![node isKindOfClass:[RCTValueAnimatedNode class]]) {
+       RCTLogError(@"Not a value node.");
+       return;
+     }
+    RCTValueAnimatedNode *valueNode = (RCTValueAnimatedNode *)node;;
+    saveCallback(@[@(valueNode.value)]);
+}
+
 #pragma mark -- Drivers
 
 - (void)startAnimatingNode:(nonnull NSNumber *)animationId
@@ -222,6 +260,15 @@
                     config:(NSDictionary<NSString *, id> *)config
                endCallback:(RCTResponseSenderBlock)callBack
 {
+  // check if the animation has already started
+  for (id<RCTAnimationDriver> driver in _activeAnimations) {
+    if ([driver.animationId isEqual:animationId]) {
+      // if the animation is running, we restart it with an updated configuration
+      [driver resetAnimationConfig:config];
+      return;
+    }
+  }
+
   RCTValueAnimatedNode *valueNode = (RCTValueAnimatedNode *)_animationNodes[nodeTag];
 
   NSString *type = config[@"type"];
@@ -303,7 +350,7 @@
   RCTEventAnimation *driver =
     [[RCTEventAnimation alloc] initWithEventPath:eventPath valueNode:(RCTValueAnimatedNode *)node];
 
-  NSString *key = [NSString stringWithFormat:@"%@%@", viewTag, eventName];
+  NSString *key = [NSString stringWithFormat:@"%@%@", viewTag, RCTNormalizeAnimatedEventName(eventName)];
   if (_eventDrivers[key] != nil) {
     [_eventDrivers[key] addObject:driver];
   } else {
@@ -317,7 +364,7 @@
                           eventName:(nonnull NSString *)eventName
                     animatedNodeTag:(nonnull NSNumber *)animatedNodeTag
 {
-  NSString *key = [NSString stringWithFormat:@"%@%@", viewTag, eventName];
+  NSString *key = [NSString stringWithFormat:@"%@%@", viewTag, RCTNormalizeAnimatedEventName(eventName)];
   if (_eventDrivers[key] != nil) {
     if (_eventDrivers[key].count == 1) {
       [_eventDrivers removeObjectForKey:key];
@@ -339,7 +386,7 @@
     return;
   }
 
-  NSString *key = [NSString stringWithFormat:@"%@%@", event.viewTag, event.eventName];
+  NSString *key = [NSString stringWithFormat:@"%@%@", event.viewTag, RCTNormalizeAnimatedEventName(event.eventName)];
   NSMutableArray<RCTEventAnimation *> *driversForKey = _eventDrivers[key];
   if (driversForKey) {
     for (RCTEventAnimation *driver in driversForKey) {

@@ -1,27 +1,25 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule Animation
  * @flow
  * @format
  */
+
 'use strict';
 
-const NativeAnimatedHelper = require('NativeAnimatedHelper');
+const NativeAnimatedHelper = require('../NativeAnimatedHelper');
 
 import type AnimatedValue from '../nodes/AnimatedValue';
 
-export type EndResult = {finished: boolean};
+export type EndResult = {finished: boolean, ...};
 export type EndCallback = (result: EndResult) => void;
 
 export type AnimationConfig = {
   isInteraction?: boolean,
-  useNativeDriver?: boolean,
+  useNativeDriver: boolean,
   onComplete?: ?EndCallback,
   iterations?: number,
 };
@@ -59,7 +57,9 @@ class Animation {
     onEnd && onEnd(result);
   }
   __startNativeAnimation(animatedValue: AnimatedValue): void {
+    NativeAnimatedHelper.API.enableQueue();
     animatedValue.__makeNative();
+    NativeAnimatedHelper.API.disableQueue();
     this.__nativeId = NativeAnimatedHelper.generateNewAnimationId();
     NativeAnimatedHelper.API.startAnimatingNode(
       this.__nativeId,

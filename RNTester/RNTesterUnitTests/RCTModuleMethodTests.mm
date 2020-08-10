@@ -1,11 +1,8 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
- *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import <UIKit/UIKit.h>
@@ -59,6 +56,9 @@ static RCTModuleMethod *buildSyncMethodWithMethodSignature(const char *methodSig
 
 - (id)echoString:(NSString *)input { return input; }
 - (id)methodThatReturnsNil { return nil; }
+- (void)openURL:(NSURL *)URL resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject {}
+- (void)openURL:(NSURL *)URL callback:(RCTResponseSenderBlock)callback {}
+- (id)methodThatCallsCallbackWithArg:(NSString *)input callback:(RCTResponseSenderBlock)callback { callback(@[input]); return nil; }
 
 - (void)testNonnull
 {
@@ -149,18 +149,50 @@ static RCTModuleMethod *buildSyncMethodWithMethodSignature(const char *methodSig
     const char *methodSignature = "doFoo";
     RCTModuleMethod *method = buildDefaultMethodWithMethodSignature(methodSignature);
     XCTAssertTrue(method.functionType == RCTFunctionTypeNormal);
+    XCTAssertFalse(RCTLogsError(^{
+      // Invoke method to trigger parsing
+      __unused SEL selector = method.selector;
+    }), @"Unexpected error when parsing normal function");
+  }
+
+  {
+    const char *methodSignature = "openURL:(NSURL *)URL callback:(RCTResponseSenderBlock)callBack";
+    RCTModuleMethod *method = buildDefaultMethodWithMethodSignature(methodSignature);
+    XCTAssertTrue(method.functionType == RCTFunctionTypeNormal);
+    XCTAssertFalse(RCTLogsError(^{
+      // Invoke method to trigger parsing
+      __unused SEL selector = method.selector;
+    }), @"Unexpected error when parsing normal function with callback");
   }
 
   {
     const char *methodSignature = "openURL:(NSURL *)URL resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject";
     RCTModuleMethod *method = buildDefaultMethodWithMethodSignature(methodSignature);
     XCTAssertTrue(method.functionType == RCTFunctionTypePromise);
+    XCTAssertFalse(RCTLogsError(^{
+      // Invoke method to trigger parsing
+      __unused SEL selector = method.selector;
+    }), @"Unexpected error when parsing promise function");
   }
-
+  
   {
     const char *methodSignature = "echoString:(NSString *)input";
     RCTModuleMethod *method = buildSyncMethodWithMethodSignature(methodSignature);
     XCTAssertTrue(method.functionType == RCTFunctionTypeSync);
+    XCTAssertFalse(RCTLogsError(^{
+      // Invoke method to trigger parsing
+      __unused SEL selector = method.selector;
+    }), @"Unexpected error when parsing sync function");
+  }
+
+  {
+    const char *methodSignature = "methodThatCallsCallbackWithArg:(NSString *)input callback:(RCTResponseSenderBlock)callback";
+    RCTModuleMethod *method = buildSyncMethodWithMethodSignature(methodSignature);
+    XCTAssertTrue(method.functionType == RCTFunctionTypeSync);
+    XCTAssertFalse(RCTLogsError(^{
+      // Invoke method to trigger parsing
+      __unused SEL selector = method.selector;
+    }), @"Unexpected error when parsing sync function with callback");
   }
 }
 

@@ -1,12 +1,13 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc. All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * <p>This source code is licensed under the BSD-style license found in the LICENSE file in the root
- * directory of this source tree. An additional grant of patent rights can be found in the PATENTS
- * file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
+
 package com.facebook.react.uimanager;
 
+import androidx.annotation.Nullable;
 import com.facebook.yoga.YogaAlign;
 import com.facebook.yoga.YogaBaselineFunction;
 import com.facebook.yoga.YogaDirection;
@@ -19,7 +20,6 @@ import com.facebook.yoga.YogaOverflow;
 import com.facebook.yoga.YogaPositionType;
 import com.facebook.yoga.YogaValue;
 import com.facebook.yoga.YogaWrap;
-import javax.annotation.Nullable;
 
 /**
  * Base node class for representing virtual tree of React nodes. Shadow nodes are used primarily for
@@ -48,15 +48,16 @@ public interface ReactShadowNode<T extends ReactShadowNode> {
 
   /**
    * Nodes that return {@code true} will be treated as "virtual" nodes. That is, nodes that are not
-   * mapped into native views (e.g. nested text node). By default this method returns {@code false}.
+   * mapped into native views or Yoga nodes (e.g. nested text node). By default this method returns
+   * {@code false}.
    */
   boolean isVirtual();
 
   /**
    * Nodes that return {@code true} will be treated as a root view for the virtual nodes tree. It
-   * means that {@link NativeViewHierarchyManager} will not try to perform {@code manageChildren}
-   * operation on such views. Good example is {@code InputText} view that may have children {@code
-   * Text} nodes but this whole hierarchy will be mapped to a single android {@link EditText} view.
+   * means that all of its descendants will be "virtual" nodes. Good example is {@code InputText}
+   * view that may have children {@code Text} nodes but this whole hierarchy will be mapped to a
+   * single android {@link EditText} view.
    */
   boolean isVirtualAnchor();
 
@@ -67,6 +68,14 @@ public interface ReactShadowNode<T extends ReactShadowNode> {
    * subclass to enforce this requirement.
    */
   boolean isYogaLeafNode();
+
+  /**
+   * When constructing the native tree, nodes that return {@code true} will be treated as leaves.
+   * Instead of adding this view's native children as subviews of it, they will be added as subviews
+   * of an ancestor. In other words, this view wants to support native children but it cannot host
+   * them itself (e.g. it isn't a ViewGroup).
+   */
+  boolean hoistNativeChildren();
 
   String getViewClass();
 
@@ -99,7 +108,7 @@ public interface ReactShadowNode<T extends ReactShadowNode> {
    * layout. Will be only called for nodes that are marked as updated with {@link #markUpdated()} or
    * require layouting (marked with {@link #dirty()}).
    */
-  void onBeforeLayout();
+  void onBeforeLayout(NativeViewHierarchyOptimizer nativeViewHierarchyOptimizer);
 
   void updateProperties(ReactStylesDiffMap props);
 
@@ -126,14 +135,20 @@ public interface ReactShadowNode<T extends ReactShadowNode> {
 
   void setReactTag(int reactTag);
 
-  T getRootNode();
+  int getRootTag();
 
-  void setRootNode(T rootNode);
+  void setRootTag(int rootTag);
 
   void setViewClassName(String viewClassName);
 
   @Nullable
   T getParent();
+
+  // Returns the node that is responsible for laying out this node.
+  @Nullable
+  T getLayoutParent();
+
+  void setLayoutParent(@Nullable T layoutParent);
 
   /**
    * Get the {@link ThemedReactContext} associated with this {@link ReactShadowNode}. This will
@@ -147,6 +162,8 @@ public interface ReactShadowNode<T extends ReactShadowNode> {
   boolean shouldNotifyOnLayout();
 
   void calculateLayout();
+
+  void calculateLayout(float width, float height);
 
   boolean hasNewLayout();
 
@@ -177,9 +194,16 @@ public interface ReactShadowNode<T extends ReactShadowNode> {
 
   boolean isLayoutOnly();
 
+  NativeKind getNativeKind();
+
   int getTotalNativeChildren();
 
   boolean isDescendantOf(T ancestorNode);
+
+  /**
+   * @return a {@link String} representation of the Yoga hierarchy of this {@link ReactShadowNode}
+   */
+  String getHierarchyInfo();
 
   /*
    * In some cases we need a way to specify some environmental data to shadow node
@@ -191,7 +215,7 @@ public interface ReactShadowNode<T extends ReactShadowNode> {
    * Use  {@link UIManagerModule#setViewLocalData} to set this property
    * (to provide local/environmental data for a shadow node) from the main thread.
    */
-  public void setLocalData(Object data);
+  void setLocalData(Object data);
 
   /**
    * Returns the offset within the native children owned by all layout-only nodes in the subtree
@@ -263,6 +287,8 @@ public interface ReactShadowNode<T extends ReactShadowNode> {
   void setStyleMaxWidthPercent(float percent);
 
   YogaValue getStyleHeight();
+
+  float getFlex();
 
   void setStyleHeight(float heightPx);
 
@@ -341,4 +367,12 @@ public interface ReactShadowNode<T extends ReactShadowNode> {
   boolean isMeasureDefined();
 
   void dispose();
+
+  void setMeasureSpecs(int widthMeasureSpec, int heightMeasureSpec);
+
+  Integer getWidthMeasureSpec();
+
+  Integer getHeightMeasureSpec();
+
+  Iterable<? extends ReactShadowNode> calculateLayoutOnChildren();
 }

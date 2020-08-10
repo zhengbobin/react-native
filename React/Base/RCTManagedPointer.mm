@@ -1,10 +1,8 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import "RCTManagedPointer.h"
@@ -13,14 +11,16 @@
   std::shared_ptr<void> _pointer;
 }
 
-- (instancetype)initWithPointer:(std::shared_ptr<void>)pointer {
+- (instancetype)initWithPointer:(std::shared_ptr<void>)pointer
+{
   if (self = [super init]) {
     _pointer = std::move(pointer);
   }
   return self;
 }
 
-- (void *)voidPointer {
+- (void *)voidPointer
+{
   return _pointer.get();
 }
 

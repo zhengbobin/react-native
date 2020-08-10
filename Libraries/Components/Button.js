@@ -1,105 +1,266 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule Button
+ * @format
  * @flow
+ * @generate-docs
  */
+
 'use strict';
 
-const ColorPropType = require('ColorPropType');
-const Platform = require('Platform');
-const React = require('React');
-const PropTypes = require('prop-types');
-const StyleSheet = require('StyleSheet');
-const Text = require('Text');
-const TouchableNativeFeedback = require('TouchableNativeFeedback');
-const TouchableOpacity = require('TouchableOpacity');
-const View = require('View');
+const Platform = require('../Utilities/Platform');
+const React = require('react');
+const StyleSheet = require('../StyleSheet/StyleSheet');
+const Text = require('../Text/Text');
+const TouchableNativeFeedback = require('./Touchable/TouchableNativeFeedback');
+const TouchableOpacity = require('./Touchable/TouchableOpacity');
+const View = require('./View/View');
 
-const invariant = require('fbjs/lib/invariant');
+const invariant = require('invariant');
+
+import type {PressEvent} from '../Types/CoreEventTypes';
+import type {ColorValue} from '../StyleSheet/StyleSheet';
+
+type ButtonProps = $ReadOnly<{|
+  /**
+    Text to display inside the button. On Android the given title will be
+    converted to the uppercased form.
+   */
+  title: string,
+
+  /**
+    Handler to be called when the user taps the button. The first function
+    argument is an event in form of [PressEvent](pressevent).
+   */
+  onPress: (event?: PressEvent) => mixed,
+
+  /**
+    If `true`, doesn't play system sound on touch.
+
+    @platform android
+
+    @default false
+   */
+  touchSoundDisabled?: ?boolean,
+
+  /**
+    Color of the text (iOS), or background color of the button (Android).
+
+    @default {@platform android} '#2196F3'
+    @default {@platform ios} '#007AFF'
+   */
+  color?: ?ColorValue,
+
+  /**
+    TV preferred focus.
+
+    @platform tv
+
+    @default false
+   */
+  hasTVPreferredFocus?: ?boolean,
+
+  /**
+    Designates the next view to receive focus when the user navigates down. See
+    the [Android documentation][android:nextFocusDown].
+
+    [android:nextFocusDown]:
+    https://developer.android.com/reference/android/view/View.html#attr_android:nextFocusDown
+
+    @platform android, tv
+   */
+  nextFocusDown?: ?number,
+
+  /**
+    Designates the next view to receive focus when the user navigates forward.
+    See the [Android documentation][android:nextFocusForward].
+
+    [android:nextFocusForward]:
+    https://developer.android.com/reference/android/view/View.html#attr_android:nextFocusForward
+
+    @platform android, tv
+   */
+  nextFocusForward?: ?number,
+
+  /**
+    Designates the next view to receive focus when the user navigates left. See
+    the [Android documentation][android:nextFocusLeft].
+
+    [android:nextFocusLeft]:
+    https://developer.android.com/reference/android/view/View.html#attr_android:nextFocusLeft
+
+    @platform android, tv
+   */
+  nextFocusLeft?: ?number,
+
+  /**
+    Designates the next view to receive focus when the user navigates right. See
+    the [Android documentation][android:nextFocusRight].
+
+    [android:nextFocusRight]:
+    https://developer.android.com/reference/android/view/View.html#attr_android:nextFocusRight
+
+    @platform android, tv
+   */
+  nextFocusRight?: ?number,
+
+  /**
+    Designates the next view to receive focus when the user navigates up. See
+    the [Android documentation][android:nextFocusUp].
+
+    [android:nextFocusUp]:
+    https://developer.android.com/reference/android/view/View.html#attr_android:nextFocusUp
+
+    @platform android, tv
+   */
+  nextFocusUp?: ?number,
+
+  /**
+    Text to display for blindness accessibility features.
+   */
+  accessibilityLabel?: ?string,
+
+  /**
+    If `true`, disable all interactions for this component.
+
+    @default false
+   */
+  disabled?: ?boolean,
+
+  /**
+    Used to locate this view in end-to-end tests.
+   */
+  testID?: ?string,
+|}>;
 
 /**
- * A basic button component that should render nicely on any platform. Supports
- * a minimal level of customization.
- *
- * <center><img src="img/buttonExample.png"></img></center>
- *
- * If this button doesn't look right for your app, you can build your own
- * button using [TouchableOpacity](docs/touchableopacity.html)
- * or [TouchableNativeFeedback](docs/touchablenativefeedback.html).
- * For inspiration, look at the [source code for this button component](https://github.com/facebook/react-native/blob/master/Libraries/Components/Button.js).
- * Or, take a look at the [wide variety of button components built by the community](https://js.coach/react-native?search=button).
- *
- * Example usage:
- *
- * ```
- * import { Button } from 'react-native';
- * ...
- *
- * <Button
- *   onPress={onPressLearnMore}
- *   title="Learn More"
- *   color="#841584"
- *   accessibilityLabel="Learn more about this purple button"
- * />
- * ```
- *
+  A basic button component that should render nicely on any platform. Supports a
+  minimal level of customization.
+
+  If this button doesn't look right for your app, you can build your own button
+  using [TouchableOpacity](touchableopacity) or
+  [TouchableWithoutFeedback](touchablewithoutfeedback). For inspiration, look at
+  the [source code for this button component][button:source]. Or, take a look at
+  the [wide variety of button components built by the community]
+  [button:examples].
+
+  [button:source]:
+  https://github.com/facebook/react-native/blob/master/Libraries/Components/Button.js
+
+  [button:examples]:
+  https://js.coach/?menu%5Bcollections%5D=React%20Native&page=1&query=button
+
+  ```jsx
+  <Button
+    onPress={onPressLearnMore}
+    title="Learn More"
+    color="#841584"
+    accessibilityLabel="Learn more about this purple button"
+  />
+  ```
+
+  ```SnackPlayer name=Button%20Example
+  import React from 'react';
+  import { StyleSheet, Button, View, SafeAreaView, Text, Alert } from 'react-native';
+
+  const Separator = () => (
+    <View style={styles.separator} />
+  );
+
+  const App = () => (
+    <SafeAreaView style={styles.container}>
+      <View>
+        <Text style={styles.title}>
+          The title and onPress handler are required. It is recommended to set accessibilityLabel to help make your app usable by everyone.
+        </Text>
+        <Button
+          title="Press me"
+          onPress={() => Alert.alert('Simple Button pressed')}
+        />
+      </View>
+      <Separator />
+      <View>
+        <Text style={styles.title}>
+          Adjust the color in a way that looks standard on each platform. On  iOS, the color prop controls the color of the text. On Android, the color adjusts the background color of the button.
+        </Text>
+        <Button
+          title="Press me"
+          color="#f194ff"
+          onPress={() => Alert.alert('Button with adjusted color pressed')}
+        />
+      </View>
+      <Separator />
+      <View>
+        <Text style={styles.title}>
+          All interaction for the component are disabled.
+        </Text>
+        <Button
+          title="Press me"
+          disabled
+          onPress={() => Alert.alert('Cannot press this one')}
+        />
+      </View>
+      <Separator />
+      <View>
+        <Text style={styles.title}>
+          This layout strategy lets the title define the width of the button.
+        </Text>
+        <View style={styles.fixToText}>
+          <Button
+            title="Left button"
+            onPress={() => Alert.alert('Left button pressed')}
+          />
+          <Button
+            title="Right button"
+            onPress={() => Alert.alert('Right button pressed')}
+          />
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      marginHorizontal: 16,
+    },
+    title: {
+      textAlign: 'center',
+      marginVertical: 8,
+    },
+    fixToText: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    separator: {
+      marginVertical: 8,
+      borderBottomColor: '#737373',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+  });
+
+  export default App;
+  ```
  */
 
-class Button extends React.Component<{
-  title: string,
-  onPress: () => any,
-  color?: ?string,
-  accessibilityLabel?: ?string,
-  disabled?: ?boolean,
-  testID?: ?string,
-  hasTVPreferredFocus?: ?boolean,
-}> {
-  static propTypes = {
-    /**
-     * Text to display inside the button
-     */
-    title: PropTypes.string.isRequired,
-    /**
-     * Text to display for blindness accessibility features
-     */
-    accessibilityLabel: PropTypes.string,
-    /**
-     * Color of the text (iOS), or background color of the button (Android)
-     */
-    color: ColorPropType,
-    /**
-     * If true, disable all interactions for this component.
-     */
-    disabled: PropTypes.bool,
-    /**
-     * Handler to be called when the user taps the button
-     */
-    onPress: PropTypes.func.isRequired,
-    /**
-     * Used to locate this view in end-to-end tests.
-     */
-    testID: PropTypes.string,
-    /**
-     * *(Apple TV only)* TV preferred focus (see documentation for the View component).
-     *
-     * @platform ios
-     */
-    hasTVPreferredFocus: PropTypes.bool,
-  };
-
-  render() {
+class Button extends React.Component<ButtonProps> {
+  render(): React.Node {
     const {
       accessibilityLabel,
       color,
       onPress,
+      touchSoundDisabled,
       title,
       hasTVPreferredFocus,
+      nextFocusDown,
+      nextFocusForward,
+      nextFocusLeft,
+      nextFocusRight,
+      nextFocusUp,
       disabled,
       testID,
     } = this.props;
@@ -112,29 +273,39 @@ class Button extends React.Component<{
         buttonStyles.push({backgroundColor: color});
       }
     }
-    const accessibilityTraits = ['button'];
+    const accessibilityState = {};
     if (disabled) {
       buttonStyles.push(styles.buttonDisabled);
       textStyles.push(styles.textDisabled);
-      accessibilityTraits.push('disabled');
+      accessibilityState.disabled = true;
     }
     invariant(
       typeof title === 'string',
       'The title prop of a Button must be a string',
     );
-    const formattedTitle = Platform.OS === 'android' ? title.toUpperCase() : title;
-    const Touchable = Platform.OS === 'android' ? TouchableNativeFeedback : TouchableOpacity;
+    const formattedTitle =
+      Platform.OS === 'android' ? title.toUpperCase() : title;
+    const Touchable =
+      Platform.OS === 'android' ? TouchableNativeFeedback : TouchableOpacity;
     return (
       <Touchable
-        accessibilityComponentType="button"
         accessibilityLabel={accessibilityLabel}
-        accessibilityTraits={accessibilityTraits}
+        accessibilityRole="button"
+        accessibilityState={accessibilityState}
         hasTVPreferredFocus={hasTVPreferredFocus}
+        nextFocusDown={nextFocusDown}
+        nextFocusForward={nextFocusForward}
+        nextFocusLeft={nextFocusLeft}
+        nextFocusRight={nextFocusRight}
+        nextFocusUp={nextFocusUp}
         testID={testID}
         disabled={disabled}
-        onPress={onPress}>
+        onPress={onPress}
+        touchSoundDisabled={touchSoundDisabled}>
         <View style={buttonStyles}>
-          <Text style={textStyles} disabled={disabled}>{formattedTitle}</Text>
+          <Text style={textStyles} disabled={disabled}>
+            {formattedTitle}
+          </Text>
         </View>
       </Touchable>
     );
@@ -151,27 +322,27 @@ const styles = StyleSheet.create({
       borderRadius: 2,
     },
   }),
-  text: Platform.select({
-    ios: {
-      // iOS blue from https://developer.apple.com/ios/human-interface-guidelines/visual-design/color/
-      color: '#007AFF',
-      textAlign: 'center',
-      padding: 8,
-      fontSize: 18,
-    },
-    android: {
-      color: 'white',
-      textAlign: 'center',
-      padding: 8,
-      fontWeight: '500',
-    },
-  }),
+  text: {
+    textAlign: 'center',
+    margin: 8,
+    ...Platform.select({
+      ios: {
+        // iOS blue from https://developer.apple.com/ios/human-interface-guidelines/visual-design/color/
+        color: '#007AFF',
+        fontSize: 18,
+      },
+      android: {
+        color: 'white',
+        fontWeight: '500',
+      },
+    }),
+  },
   buttonDisabled: Platform.select({
     ios: {},
     android: {
       elevation: 0,
       backgroundColor: '#dfdfdf',
-    }
+    },
   }),
   textDisabled: Platform.select({
     ios: {
@@ -179,7 +350,7 @@ const styles = StyleSheet.create({
     },
     android: {
       color: '#a1a1a1',
-    }
+    },
   }),
 });
 

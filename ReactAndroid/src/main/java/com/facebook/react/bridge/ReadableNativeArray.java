@@ -1,18 +1,19 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.bridge;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import com.facebook.infer.annotation.Assertions;
 import com.facebook.jni.HybridData;
 import com.facebook.proguard.annotations.DoNotStrip;
-
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * Implementation of a NativeArray that allows read-only access to its members. This will generally
@@ -28,32 +29,115 @@ public class ReadableNativeArray extends NativeArray implements ReadableArray {
     super(hybridData);
   }
 
-  @Override
-  public native int size();
-  @Override
-  public native boolean isNull(int index);
-  @Override
-  public native boolean getBoolean(int index);
-  @Override
-  public native double getDouble(int index);
-  @Override
-  public native int getInt(int index);
-  @Override
-  public native String getString(int index);
-  @Override
-  public native ReadableNativeArray getArray(int index);
-  @Override
-  public native ReadableNativeMap getMap(int index);
-  @Override
-  public native ReadableType getType(int index);
+  // WriteOnce but not in the constructor fields
+  private @Nullable Object[] mLocalArray;
+  private @Nullable ReadableType[] mLocalTypeArray;
+
+  private static int jniPassCounter = 0;
+
+  public static int getJNIPassCounter() {
+    return jniPassCounter;
+  }
+
+  private Object[] getLocalArray() {
+    if (mLocalArray != null) {
+      return mLocalArray;
+    }
+    synchronized (this) {
+      // Make sure no concurrent call already updated
+      if (mLocalArray == null) {
+        jniPassCounter++;
+        mLocalArray = Assertions.assertNotNull(importArray());
+      }
+    }
+    return mLocalArray;
+  }
+
+  private native Object[] importArray();
+
+  private ReadableType[] getLocalTypeArray() {
+    if (mLocalTypeArray != null) {
+      return mLocalTypeArray;
+    }
+    synchronized (this) {
+      // Make sure no concurrent call already updated
+      if (mLocalTypeArray == null) {
+        jniPassCounter++;
+        Object[] tempArray = Assertions.assertNotNull(importTypeArray());
+        mLocalTypeArray = Arrays.copyOf(tempArray, tempArray.length, ReadableType[].class);
+      }
+    }
+    return mLocalTypeArray;
+  }
+
+  private native Object[] importTypeArray();
 
   @Override
-  public Dynamic getDynamic(int index) {
+  public int size() {
+    return getLocalArray().length;
+  }
+
+  @Override
+  public boolean isNull(int index) {
+    return getLocalArray()[index] == null;
+  }
+
+  @Override
+  public boolean getBoolean(int index) {
+    return ((Boolean) getLocalArray()[index]).booleanValue();
+  }
+
+  @Override
+  public double getDouble(int index) {
+    return ((Double) getLocalArray()[index]).doubleValue();
+  }
+
+  @Override
+  public int getInt(int index) {
+    return ((Double) getLocalArray()[index]).intValue();
+  }
+
+  @Override
+  public @Nullable String getString(int index) {
+    return (String) getLocalArray()[index];
+  }
+
+  @Override
+  public @Nullable ReadableNativeArray getArray(int index) {
+    return (ReadableNativeArray) getLocalArray()[index];
+  }
+
+  @Override
+  public @Nullable ReadableNativeMap getMap(int index) {
+    return (ReadableNativeMap) getLocalArray()[index];
+  }
+
+  @Override
+  public @NonNull ReadableType getType(int index) {
+    return getLocalTypeArray()[index];
+  }
+
+  @Override
+  public @NonNull Dynamic getDynamic(int index) {
     return DynamicFromArray.create(this, index);
   }
 
   @Override
-  public ArrayList<Object> toArrayList() {
+  public int hashCode() {
+    return getLocalArray().hashCode();
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (!(obj instanceof ReadableNativeArray)) {
+      return false;
+    }
+    ReadableNativeArray other = (ReadableNativeArray) obj;
+    return Arrays.deepEquals(getLocalArray(), other.getLocalArray());
+  }
+
+  @Override
+  public @NonNull ArrayList<Object> toArrayList() {
     ArrayList<Object> arrayList = new ArrayList<>();
 
     for (int i = 0; i < this.size(); i++) {

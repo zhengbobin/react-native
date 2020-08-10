@@ -1,24 +1,20 @@
-/**
- * Copyright (c) 2014-present, Facebook, Inc.
- * All rights reserved.
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.testing;
 
-import javax.annotation.Nullable;
-
-import com.facebook.react.bridge.BaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
-
 import static junit.framework.Assert.assertFalse;
 import static junit.framework.Assert.assertTrue;
 
-/**
- * NativeModule for tests that allows assertions from JS to propagate to Java.
- */
+import androidx.annotation.Nullable;
+import com.facebook.react.bridge.BaseJavaModule;
+import com.facebook.react.bridge.ReactMethod;
+
+/** NativeModule for tests that allows assertions from JS to propagate to Java. */
 public class AssertModule extends BaseJavaModule {
 
   private boolean mGotSuccess;

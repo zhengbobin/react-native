@@ -1,17 +1,16 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule Batchinator
- * @flow
+ * @format
+ * @flow strict-local
  */
+
 'use strict';
 
-const InteractionManager = require('InteractionManager');
+const InteractionManager = require('./InteractionManager');
 
 /**
  * A simple class for batching up invocations of a low-pri callback. A timeout is set to run the
@@ -38,7 +37,7 @@ const InteractionManager = require('InteractionManager');
 class Batchinator {
   _callback: () => void;
   _delay: number;
-  _taskHandle: ?{cancel: () => void};
+  _taskHandle: ?{cancel: () => void, ...};
   constructor(callback: () => void, delayMS: number) {
     this._delay = delayMS;
     this._callback = callback;
@@ -49,7 +48,7 @@ class Batchinator {
    * By default, if there is a pending task the callback is run immediately. Set the option abort to
    * true to not call the callback if it was pending.
    */
-  dispose(options: {abort: boolean} = {abort: false}) {
+  dispose(options: {abort: boolean, ...} = {abort: false}) {
     if (this._taskHandle) {
       this._taskHandle.cancel();
       if (!options.abort) {

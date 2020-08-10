@@ -1,15 +1,13 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
-#import <Foundation/Foundation.h>
-
 #import "RCTI18nUtil.h"
+
+#import <UIKit/UIKit.h>
 
 @implementation RCTI18nUtil
 
@@ -19,9 +17,9 @@
   static dispatch_once_t onceToken;
   dispatch_once(&onceToken, ^{
     sharedInstance = [self new];
-    [sharedInstance makeRTLFlipLeftAndRightStyles: true];
+    [sharedInstance swapLeftAndRightInRTL:true];
   });
-  
+
   return sharedInstance;
 }
 
@@ -68,8 +66,7 @@
  */
 - (BOOL)isRTLForced
 {
-  BOOL rtlStatus = [[NSUserDefaults standardUserDefaults]
-                            boolForKey:@"RCTI18nUtil_forceRTL"];
+  BOOL rtlStatus = [[NSUserDefaults standardUserDefaults] boolForKey:@"RCTI18nUtil_forceRTL"];
   return rtlStatus;
 }
 
@@ -79,12 +76,12 @@
   [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
-- (BOOL)doesRTLFlipLeftAndRightStyles
+- (BOOL)doLeftAndRightSwapInRTL
 {
   return [[NSUserDefaults standardUserDefaults] boolForKey:@"RCTI18nUtil_makeRTLFlipLeftAndRightStyles"];
 }
 
-- (void)makeRTLFlipLeftAndRightStyles:(BOOL)value
+- (void)swapLeftAndRightInRTL:(BOOL)value
 {
   [[NSUserDefaults standardUserDefaults] setBool:value forKey:@"RCTI18nUtil_makeRTLFlipLeftAndRightStyles"];
   [[NSUserDefaults standardUserDefaults] synchronize];
@@ -93,16 +90,16 @@
 // Check if the current device language is RTL
 - (BOOL)isDevicePreferredLanguageRTL
 {
-  NSLocaleLanguageDirection direction = [NSLocale characterDirectionForLanguage:[[NSLocale preferredLanguages] objectAtIndex:0]];
+  NSLocaleLanguageDirection direction =
+      [NSLocale characterDirectionForLanguage:[[NSLocale preferredLanguages] objectAtIndex:0]];
   return direction == NSLocaleLanguageDirectionRightToLeft;
 }
 
 // Check if the current application language is RTL
 - (BOOL)isApplicationPreferredLanguageRTL
 {
-  NSString *preferredAppLanguage = [[[NSBundle mainBundle] preferredLocalizations] objectAtIndex:0];
-  NSLocaleLanguageDirection direction = [NSLocale characterDirectionForLanguage:preferredAppLanguage];
-  return direction == NSLocaleLanguageDirectionRightToLeft;
+  NSWritingDirection direction = [NSParagraphStyle defaultWritingDirectionForLanguage:nil];
+  return direction == NSWritingDirectionRightToLeft;
 }
 
 @end

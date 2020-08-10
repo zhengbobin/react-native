@@ -1,24 +1,19 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.uimanager;
 
-import android.support.v4.util.Pools;
-
+import androidx.core.util.Pools;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.uimanager.events.Event;
 import com.facebook.react.uimanager.events.RCTEventEmitter;
 
-/**
- * Event used to notify JS component about changes of its position or dimensions
- */
+/** Event used to notify JS component about changes of its position or dimensions */
 public class OnLayoutEvent extends Event<OnLayoutEvent> {
 
   private static final Pools.SynchronizedPool<OnLayoutEvent> EVENTS_POOL =
@@ -40,8 +35,7 @@ public class OnLayoutEvent extends Event<OnLayoutEvent> {
     EVENTS_POOL.release(this);
   }
 
-  private OnLayoutEvent() {
-  }
+  private OnLayoutEvent() {}
 
   protected void init(int viewTag, int x, int y, int width, int height) {
     super.init(viewTag);

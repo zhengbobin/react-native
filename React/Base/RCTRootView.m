@@ -1,10 +1,8 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import "RCTRootView.h"
@@ -14,23 +12,26 @@
 #import <objc/runtime.h>
 
 #import "RCTAssert.h"
-#import "RCTBridge.h"
 #import "RCTBridge+Private.h"
+#import "RCTBridge.h"
+#import "RCTConstants.h"
 #import "RCTEventDispatcher.h"
 #import "RCTKeyCommands.h"
 #import "RCTLog.h"
 #import "RCTPerformanceLogger.h"
 #import "RCTProfile.h"
 #import "RCTRootContentView.h"
+#import "RCTRootShadowView.h"
 #import "RCTTouchHandler.h"
 #import "RCTUIManager.h"
+#import "RCTUIManagerUtils.h"
 #import "RCTUtils.h"
 #import "RCTView.h"
 #import "UIView+React.h"
 
 #if TARGET_OS_TV
-#import "RCTTVRemoteHandler.h"
 #import "RCTTVNavigationEventEmitter.h"
+#import "RCTTVRemoteHandler.h"
 #endif
 
 NSString *const RCTContentDidAppearNotification = @"RCTContentDidAppearNotification";
@@ -41,8 +42,7 @@ NSString *const RCTContentDidAppearNotification = @"RCTContentDidAppearNotificat
 
 @end
 
-@implementation RCTRootView
-{
+@implementation RCTRootView {
   RCTBridge *_bridge;
   NSString *_moduleName;
   RCTRootContentView *_contentView;
@@ -72,6 +72,7 @@ NSString *const RCTContentDidAppearNotification = @"RCTContentDidAppearNotificat
     _loadingViewFadeDelay = 0.25;
     _loadingViewFadeDuration = 0.25;
     _sizeFlexibility = RCTRootViewSizeFlexibilityNone;
+    _minimumSize = CGSizeZero;
 
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(bridgeDidReload)
@@ -90,8 +91,8 @@ NSString *const RCTContentDidAppearNotification = @"RCTContentDidAppearNotificat
 
 #if TARGET_OS_TV
     self.tvRemoteHandler = [RCTTVRemoteHandler new];
-    for (UIGestureRecognizer *gr in self.tvRemoteHandler.tvRemoteGestureRecognizers) {
-      [self addGestureRecognizer:gr];
+    for (NSString *key in [self.tvRemoteHandler.tvRemoteGestureRecognizers allKeys]) {
+      [self addGestureRecognizer:self.tvRemoteHandler.tvRemoteGestureRecognizers[key]];
     }
 #endif
 
@@ -112,15 +113,13 @@ NSString *const RCTContentDidAppearNotification = @"RCTContentDidAppearNotificat
                 initialProperties:(NSDictionary *)initialProperties
                     launchOptions:(NSDictionary *)launchOptions
 {
-  RCTBridge *bridge = [[RCTBridge alloc] initWithBundleURL:bundleURL
-                                            moduleProvider:nil
-                                             launchOptions:launchOptions];
+  RCTBridge *bridge = [[RCTBridge alloc] initWithBundleURL:bundleURL moduleProvider:nil launchOptions:launchOptions];
 
   return [self initWithBridge:bridge moduleName:moduleName initialProperties:initialProperties];
 }
 
-RCT_NOT_IMPLEMENTED(- (instancetype)initWithFrame:(CGRect)frame)
-RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
+RCT_NOT_IMPLEMENTED(-(instancetype)initWithFrame : (CGRect)frame)
+RCT_NOT_IMPLEMENTED(-(instancetype)initWithCoder : (NSCoder *)aDecoder)
 
 #if TARGET_OS_TV
 - (UIView *)preferredFocusedView
@@ -131,12 +130,6 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
   return [super preferredFocusedView];
 }
 #endif
-
-- (void)setBackgroundColor:(UIColor *)backgroundColor
-{
-  super.backgroundColor = backgroundColor;
-  _contentView.backgroundColor = backgroundColor;
-}
 
 #pragma mark - passThroughTouches
 
@@ -161,14 +154,10 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
   // Following the current `size` and current `sizeFlexibility` policy.
   fitSize = CGSizeMake(
       _sizeFlexibility & RCTRootViewSizeFlexibilityWidth ? fitSize.width : currentSize.width,
-      _sizeFlexibility & RCTRootViewSizeFlexibilityHeight ? fitSize.height : currentSize.height
-    );
+      _sizeFlexibility & RCTRootViewSizeFlexibilityHeight ? fitSize.height : currentSize.height);
 
   // Following the given size constraints.
-  fitSize = CGSizeMake(
-      MIN(size.width, fitSize.width),
-      MIN(size.height, fitSize.height)
-    );
+  fitSize = CGSizeMake(MIN(size.width, fitSize.width), MIN(size.height, fitSize.height));
 
   return fitSize;
 }
@@ -177,10 +166,24 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
 {
   [super layoutSubviews];
   _contentView.frame = self.bounds;
-  _loadingView.center = (CGPoint){
-    CGRectGetMidX(self.bounds),
-    CGRectGetMidY(self.bounds)
-  };
+  _loadingView.center = (CGPoint){CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds)};
+}
+
+- (void)setMinimumSize:(CGSize)minimumSize
+{
+  if (CGSizeEqualToSize(_minimumSize, minimumSize)) {
+    return;
+  }
+  _minimumSize = minimumSize;
+  __block NSNumber *tag = self.reactTag;
+  __weak typeof(self) weakSelf = self;
+  RCTExecuteOnUIManagerQueue(^{
+    __strong typeof(self) strongSelf = weakSelf;
+    if (strongSelf && strongSelf->_bridge.isValid) {
+      RCTRootShadowView *shadowView = (RCTRootShadowView *)[strongSelf->_bridge.uiManager shadowViewForReactTag:tag];
+      shadowView.minimumSize = minimumSize;
+    }
+  });
 }
 
 - (UIViewController *)reactViewController
@@ -213,18 +216,20 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
 {
   if (_loadingView.superview == self && _contentView.contentHasAppeared) {
     if (_loadingViewFadeDuration > 0) {
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_loadingViewFadeDelay * NSEC_PER_SEC)),
-                     dispatch_get_main_queue(), ^{
-
-                       [UIView transitionWithView:self
-                                         duration:self->_loadingViewFadeDuration
-                                          options:UIViewAnimationOptionTransitionCrossDissolve
-                                       animations:^{
-                                         self->_loadingView.hidden = YES;
-                                       } completion:^(__unused BOOL finished) {
-                                         [self->_loadingView removeFromSuperview];
-                                       }];
-                     });
+      dispatch_after(
+          dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_loadingViewFadeDelay * NSEC_PER_SEC)),
+          dispatch_get_main_queue(),
+          ^{
+            [UIView transitionWithView:self
+                duration:self->_loadingViewFadeDuration
+                options:UIViewAnimationOptionTransitionCrossDissolve
+                animations:^{
+                  self->_loadingView.hidden = YES;
+                }
+                completion:^(__unused BOOL finished) {
+                  [self->_loadingView removeFromSuperview];
+                }];
+          });
     } else {
       _loadingView.hidden = YES;
       [_loadingView removeFromSuperview];
@@ -243,7 +248,7 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
      * NOTE: Since the bridge persists, the RootViews might be reused, so the
      * react tag must be re-assigned every time a new UIManager is created.
      */
-    self.reactTag = [_bridge.uiManager allocateRootTag];
+    self.reactTag = RCTAllocateRootViewTag();
   }
   return super.reactTag;
 }
@@ -281,7 +286,6 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
                                             sizeFlexiblity:_sizeFlexibility];
   [self runApplication:bridge];
 
-  _contentView.backgroundColor = self.backgroundColor;
   _contentView.passThroughTouches = _passThroughTouches;
   [self insertSubview:_contentView atIndex:0];
 
@@ -294,15 +298,12 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
 {
   NSString *moduleName = _moduleName ?: @"";
   NSDictionary *appParameters = @{
-    @"rootTag": _contentView.reactTag,
-    @"initialProps": _appProperties ?: @{},
+    @"rootTag" : _contentView.reactTag,
+    @"initialProps" : _appProperties ?: @{},
   };
 
   RCTLogInfo(@"Running application %@ (%@)", moduleName, appParameters);
-  [bridge enqueueJSCall:@"AppRegistry"
-                 method:@"runApplication"
-                   args:@[moduleName, appParameters]
-             completion:NULL];
+  [bridge enqueueJSCall:@"AppRegistry" method:@"runApplication" args:@[ moduleName, appParameters ] completion:NULL];
 }
 
 - (void)setSizeFlexibility:(RCTRootViewSizeFlexibility)sizeFlexibility
@@ -351,13 +352,13 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
 
   _intrinsicContentSize = intrinsicContentSize;
 
-  [self invalidateIntrinsicContentSize];
-  [self.superview setNeedsLayout];
-
   // Don't notify the delegate if the content remains invisible or its size has not changed
   if (bothSizesHaveAZeroDimension || sizesAreEqual) {
     return;
   }
+
+  [self invalidateIntrinsicContentSize];
+  [self.superview setNeedsLayout];
 
   [_delegate rootViewDidChangeIntrinsicSize:self];
 }
@@ -374,15 +375,21 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
   [self showLoadingView];
 }
 
-- (void)dealloc
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection
 {
-  [[NSNotificationCenter defaultCenter] removeObserver:self];
-  [_contentView invalidate];
+  [super traitCollectionDidChange:previousTraitCollection];
+
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:RCTUserInterfaceStyleDidChangeNotification
+                    object:self
+                  userInfo:@{
+                    RCTUserInterfaceStyleDidChangeNotificationTraitCollectionKey : self.traitCollection,
+                  }];
 }
 
-- (void)cancelTouches
+- (void)dealloc
 {
-  [[_contentView touchHandler] cancel];
+  [_contentView invalidate];
 }
 
 @end
@@ -395,15 +402,10 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
   return self.intrinsicContentSize;
 }
 
-@end
-
-@implementation RCTUIManager (RCTRootView)
-
-- (NSNumber *)allocateRootTag
+- (void)cancelTouches
 {
-  NSNumber *rootTag = objc_getAssociatedObject(self, _cmd) ?: @1;
-  objc_setAssociatedObject(self, _cmd, @(rootTag.integerValue + 10), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  return rootTag;
+  RCTLogWarn(@"`-[RCTRootView cancelTouches]` is deprecated and will be deleted soon.");
+  [[_contentView touchHandler] cancel];
 }
 
 @end

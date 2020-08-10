@@ -1,14 +1,15 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.views.view;
 
+import static android.os.Build.VERSION_CODES.KITKAT;
+
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -25,6 +26,7 @@ import android.graphics.Region;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.view.View;
+import androidx.annotation.Nullable;
 import com.facebook.react.common.annotations.VisibleForTesting;
 import com.facebook.react.modules.i18nmanager.I18nUtil;
 import com.facebook.react.uimanager.FloatUtil;
@@ -32,7 +34,6 @@ import com.facebook.react.uimanager.Spacing;
 import com.facebook.yoga.YogaConstants;
 import java.util.Arrays;
 import java.util.Locale;
-import javax.annotation.Nullable;
 
 /**
  * A subclass of {@link Drawable} used for background of {@link ReactViewGroup}. It supports drawing
@@ -55,20 +56,19 @@ public class ReactViewBackgroundDrawable extends Drawable {
   // 0 == 0x00000000, all bits set to 0.
   private static final int ALL_BITS_UNSET = 0;
 
-
-  private static enum BorderStyle {
+  private enum BorderStyle {
     SOLID,
     DASHED,
     DOTTED;
 
-    public @Nullable PathEffect getPathEffect(float borderWidth) {
-      switch (this) {
+    public static @Nullable PathEffect getPathEffect(BorderStyle style, float borderWidth) {
+      switch (style) {
         case SOLID:
           return null;
 
         case DASHED:
           return new DashPathEffect(
-              new float[] {borderWidth*3, borderWidth*3, borderWidth*3, borderWidth*3}, 0);
+              new float[] {borderWidth * 3, borderWidth * 3, borderWidth * 3, borderWidth * 3}, 0);
 
         case DOTTED:
           return new DashPathEffect(
@@ -86,15 +86,15 @@ public class ReactViewBackgroundDrawable extends Drawable {
   private @Nullable Spacing mBorderAlpha;
   private @Nullable BorderStyle mBorderStyle;
 
-  /* Used for rounded border and rounded background */
-  private @Nullable PathEffect mPathEffectForBorderStyle;
   private @Nullable Path mInnerClipPathForBorderRadius;
   private @Nullable Path mOuterClipPathForBorderRadius;
   private @Nullable Path mPathForBorderRadiusOutline;
   private @Nullable Path mPathForBorder;
+  private @Nullable Path mCenterDrawPath;
   private @Nullable RectF mInnerClipTempRectForBorderRadius;
   private @Nullable RectF mOuterClipTempRectForBorderRadius;
   private @Nullable RectF mTempRectForBorderRadiusOutline;
+  private @Nullable RectF mTempRectForCenterDrawPath;
   private @Nullable PointF mInnerTopLeftCorner;
   private @Nullable PointF mInnerTopRightCorner;
   private @Nullable PointF mInnerBottomRightCorner;
@@ -109,6 +109,7 @@ public class ReactViewBackgroundDrawable extends Drawable {
 
   private @Nullable float[] mBorderCornerRadii;
   private final Context mContext;
+  private int mLayoutDirection;
 
   public enum BorderRadiusLocation {
     TOP_LEFT,
@@ -128,14 +129,27 @@ public class ReactViewBackgroundDrawable extends Drawable {
   @Override
   public void draw(Canvas canvas) {
     updatePathEffect();
-    boolean roundedBorders = mBorderCornerRadii != null ||
-        (!YogaConstants.isUndefined(mBorderRadius) && mBorderRadius > 0);
-
-    if (!roundedBorders) {
+    if (!hasRoundedBorders()) {
       drawRectangularBackgroundWithBorders(canvas);
     } else {
       drawRoundedBackgroundWithBorders(canvas);
     }
+  }
+
+  public boolean hasRoundedBorders() {
+    if (!YogaConstants.isUndefined(mBorderRadius) && mBorderRadius > 0) {
+      return true;
+    }
+
+    if (mBorderCornerRadii != null) {
+      for (final float borderRadii : mBorderCornerRadii) {
+        if (!YogaConstants.isUndefined(borderRadii) && borderRadii > 0) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   @Override
@@ -174,7 +188,8 @@ public class ReactViewBackgroundDrawable extends Drawable {
       super.getOutline(outline);
       return;
     }
-    if ((!YogaConstants.isUndefined(mBorderRadius) && mBorderRadius > 0) || mBorderCornerRadii != null) {
+    if ((!YogaConstants.isUndefined(mBorderRadius) && mBorderRadius > 0)
+        || mBorderCornerRadii != null) {
       updatePath();
 
       outline.setConvexPath(mPathForBorderRadiusOutline);
@@ -231,9 +246,8 @@ public class ReactViewBackgroundDrawable extends Drawable {
   }
 
   public void setBorderStyle(@Nullable String style) {
-    BorderStyle borderStyle = style == null
-        ? null
-        : BorderStyle.valueOf(style.toUpperCase(Locale.US));
+    BorderStyle borderStyle =
+        style == null ? null : BorderStyle.valueOf(style.toUpperCase(Locale.US));
     if (mBorderStyle != borderStyle) {
       mBorderStyle = borderStyle;
       mNeedUpdatePathForBorderRadius = true;
@@ -242,7 +256,7 @@ public class ReactViewBackgroundDrawable extends Drawable {
   }
 
   public void setRadius(float radius) {
-    if (!FloatUtil.floatsEqual(mBorderRadius,radius)) {
+    if (!FloatUtil.floatsEqual(mBorderRadius, radius)) {
       mBorderRadius = radius;
       mNeedUpdatePathForBorderRadius = true;
       invalidateSelf();
@@ -290,6 +304,25 @@ public class ReactViewBackgroundDrawable extends Drawable {
     invalidateSelf();
   }
 
+  /** Similar to Drawable.getLayoutDirection, but available in APIs < 23. */
+  public int getResolvedLayoutDirection() {
+    return mLayoutDirection;
+  }
+
+  /** Similar to Drawable.setLayoutDirection, but available in APIs < 23. */
+  public boolean setResolvedLayoutDirection(int layoutDirection) {
+    if (mLayoutDirection != layoutDirection) {
+      mLayoutDirection = layoutDirection;
+      return onResolvedLayoutDirectionChanged(layoutDirection);
+    }
+    return false;
+  }
+
+  /** Similar to Drawable.onLayoutDirectionChanged, but available in APIs < 23. */
+  public boolean onResolvedLayoutDirectionChanged(int layoutDirection) {
+    return false;
+  }
+
   @VisibleForTesting
   public int getColor() {
     return mColor;
@@ -307,28 +340,47 @@ public class ReactViewBackgroundDrawable extends Drawable {
     }
 
     final RectF borderWidth = getDirectionAwareBorderInsets();
+    int colorLeft = getBorderColor(Spacing.LEFT);
+    int colorTop = getBorderColor(Spacing.TOP);
+    int colorRight = getBorderColor(Spacing.RIGHT);
+    int colorBottom = getBorderColor(Spacing.BOTTOM);
 
     if (borderWidth.top > 0
         || borderWidth.bottom > 0
         || borderWidth.left > 0
         || borderWidth.right > 0) {
-      mPaint.setStyle(Paint.Style.FILL);
 
-      // Draw border
-      canvas.clipPath(mOuterClipPathForBorderRadius, Region.Op.INTERSECT);
-      canvas.clipPath(mInnerClipPathForBorderRadius, Region.Op.DIFFERENCE);
+      // If it's a full and even border draw inner rect path with stroke
+      final float fullBorderWidth = getFullBorderWidth();
+      int borderColor = getBorderColor(Spacing.ALL);
+      if (borderWidth.top == fullBorderWidth
+          && borderWidth.bottom == fullBorderWidth
+          && borderWidth.left == fullBorderWidth
+          && borderWidth.right == fullBorderWidth
+          && colorLeft == borderColor
+          && colorTop == borderColor
+          && colorRight == borderColor
+          && colorBottom == borderColor) {
+        if (fullBorderWidth > 0) {
+          mPaint.setColor(ColorUtil.multiplyColorAlpha(borderColor, mAlpha));
+          mPaint.setStyle(Paint.Style.STROKE);
+          mPaint.setStrokeWidth(fullBorderWidth);
+          canvas.drawPath(mCenterDrawPath, mPaint);
+        }
+      }
+      // In the case of uneven border widths/colors draw quadrilateral in each direction
+      else {
+        mPaint.setStyle(Paint.Style.FILL);
 
-      int colorLeft = getBorderColor(Spacing.LEFT);
-      int colorTop = getBorderColor(Spacing.TOP);
-      int colorRight = getBorderColor(Spacing.RIGHT);
-      int colorBottom = getBorderColor(Spacing.BOTTOM);
+        // Draw border
+        canvas.clipPath(mOuterClipPathForBorderRadius, Region.Op.INTERSECT);
+        canvas.clipPath(mInnerClipPathForBorderRadius, Region.Op.DIFFERENCE);
 
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        final boolean isRTL = getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+        final boolean isRTL = getResolvedLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
         int colorStart = getBorderColor(Spacing.START);
         int colorEnd = getBorderColor(Spacing.END);
 
-        if (I18nUtil.getInstance().doesRTLFlipLeftAndRightStyles(mContext)) {
+        if (I18nUtil.getInstance().doLeftAndRightSwapInRTL(mContext)) {
           if (!isBorderColorDefined(Spacing.START)) {
             colorStart = colorLeft;
           }
@@ -348,8 +400,10 @@ public class ReactViewBackgroundDrawable extends Drawable {
 
           final boolean isColorStartDefined = isBorderColorDefined(Spacing.START);
           final boolean isColorEndDefined = isBorderColorDefined(Spacing.END);
-          final boolean isDirectionAwareColorLeftDefined = isRTL ? isColorEndDefined : isColorStartDefined;
-          final boolean isDirectionAwareColorRightDefined = isRTL ? isColorStartDefined : isColorEndDefined;
+          final boolean isDirectionAwareColorLeftDefined =
+              isRTL ? isColorEndDefined : isColorStartDefined;
+          final boolean isDirectionAwareColorRightDefined =
+              isRTL ? isColorStartDefined : isColorEndDefined;
 
           if (isDirectionAwareColorLeftDefined) {
             colorLeft = directionAwareColorLeft;
@@ -359,63 +413,63 @@ public class ReactViewBackgroundDrawable extends Drawable {
             colorRight = directionAwareColorRight;
           }
         }
-      }
 
-      final float left = mOuterClipTempRectForBorderRadius.left;
-      final float right = mOuterClipTempRectForBorderRadius.right;
-      final float top = mOuterClipTempRectForBorderRadius.top;
-      final float bottom = mOuterClipTempRectForBorderRadius.bottom;
+        final float left = mOuterClipTempRectForBorderRadius.left;
+        final float right = mOuterClipTempRectForBorderRadius.right;
+        final float top = mOuterClipTempRectForBorderRadius.top;
+        final float bottom = mOuterClipTempRectForBorderRadius.bottom;
 
-      if (borderWidth.left > 0) {
-        final float x1 = left;
-        final float y1 = top;
-        final float x2 = mInnerTopLeftCorner.x;
-        final float y2 = mInnerTopLeftCorner.y;
-        final float x3 = mInnerBottomLeftCorner.x;
-        final float y3 = mInnerBottomLeftCorner.y;
-        final float x4 = left;
-        final float y4 = bottom;
+        if (borderWidth.left > 0) {
+          final float x1 = left;
+          final float y1 = top;
+          final float x2 = mInnerTopLeftCorner.x;
+          final float y2 = mInnerTopLeftCorner.y;
+          final float x3 = mInnerBottomLeftCorner.x;
+          final float y3 = mInnerBottomLeftCorner.y;
+          final float x4 = left;
+          final float y4 = bottom;
 
-        drawQuadrilateral(canvas, colorLeft, x1, y1, x2, y2, x3, y3, x4, y4);
-      }
+          drawQuadrilateral(canvas, colorLeft, x1, y1, x2, y2, x3, y3, x4, y4);
+        }
 
-      if (borderWidth.top > 0) {
-        final float x1 = left;
-        final float y1 = top;
-        final float x2 = mInnerTopLeftCorner.x;
-        final float y2 = mInnerTopLeftCorner.y;
-        final float x3 = mInnerTopRightCorner.x;
-        final float y3 = mInnerTopRightCorner.y;
-        final float x4 = right;
-        final float y4 = top;
+        if (borderWidth.top > 0) {
+          final float x1 = left;
+          final float y1 = top;
+          final float x2 = mInnerTopLeftCorner.x;
+          final float y2 = mInnerTopLeftCorner.y;
+          final float x3 = mInnerTopRightCorner.x;
+          final float y3 = mInnerTopRightCorner.y;
+          final float x4 = right;
+          final float y4 = top;
 
-        drawQuadrilateral(canvas, colorTop, x1, y1, x2, y2, x3, y3, x4, y4);
-      }
+          drawQuadrilateral(canvas, colorTop, x1, y1, x2, y2, x3, y3, x4, y4);
+        }
 
-      if (borderWidth.right > 0) {
-        final float x1 = right;
-        final float y1 = top;
-        final float x2 = mInnerTopRightCorner.x;
-        final float y2 = mInnerTopRightCorner.y;
-        final float x3 = mInnerBottomRightCorner.x;
-        final float y3 = mInnerBottomRightCorner.y;
-        final float x4 = right;
-        final float y4 = bottom;
+        if (borderWidth.right > 0) {
+          final float x1 = right;
+          final float y1 = top;
+          final float x2 = mInnerTopRightCorner.x;
+          final float y2 = mInnerTopRightCorner.y;
+          final float x3 = mInnerBottomRightCorner.x;
+          final float y3 = mInnerBottomRightCorner.y;
+          final float x4 = right;
+          final float y4 = bottom;
 
-        drawQuadrilateral(canvas, colorRight, x1, y1, x2, y2, x3, y3, x4, y4);
-      }
+          drawQuadrilateral(canvas, colorRight, x1, y1, x2, y2, x3, y3, x4, y4);
+        }
 
-      if (borderWidth.bottom > 0) {
-        final float x1 = left;
-        final float y1 = bottom;
-        final float x2 = mInnerBottomLeftCorner.x;
-        final float y2 = mInnerBottomLeftCorner.y;
-        final float x3 = mInnerBottomRightCorner.x;
-        final float y3 = mInnerBottomRightCorner.y;
-        final float x4 = right;
-        final float y4 = bottom;
+        if (borderWidth.bottom > 0) {
+          final float x1 = left;
+          final float y1 = bottom;
+          final float x2 = mInnerBottomLeftCorner.x;
+          final float y2 = mInnerBottomLeftCorner.y;
+          final float x3 = mInnerBottomRightCorner.x;
+          final float y3 = mInnerBottomRightCorner.y;
+          final float x4 = right;
+          final float y4 = bottom;
 
-        drawQuadrilateral(canvas, colorBottom, x1, y1, x2, y2, x3, y3, x4, y4);
+          drawQuadrilateral(canvas, colorBottom, x1, y1, x2, y2, x3, y3, x4, y4);
+        }
       }
     }
 
@@ -441,6 +495,10 @@ public class ReactViewBackgroundDrawable extends Drawable {
       mPathForBorderRadiusOutline = new Path();
     }
 
+    if (mCenterDrawPath == null) {
+      mCenterDrawPath = new Path();
+    }
+
     if (mInnerClipTempRectForBorderRadius == null) {
       mInnerClipTempRectForBorderRadius = new RectF();
     }
@@ -453,13 +511,19 @@ public class ReactViewBackgroundDrawable extends Drawable {
       mTempRectForBorderRadiusOutline = new RectF();
     }
 
+    if (mTempRectForCenterDrawPath == null) {
+      mTempRectForCenterDrawPath = new RectF();
+    }
+
     mInnerClipPathForBorderRadius.reset();
     mOuterClipPathForBorderRadius.reset();
     mPathForBorderRadiusOutline.reset();
+    mCenterDrawPath.reset();
 
     mInnerClipTempRectForBorderRadius.set(getBounds());
     mOuterClipTempRectForBorderRadius.set(getBounds());
     mTempRectForBorderRadiusOutline.set(getBounds());
+    mTempRectForCenterDrawPath.set(getBounds());
 
     final RectF borderWidth = getDirectionAwareBorderInsets();
 
@@ -468,24 +532,27 @@ public class ReactViewBackgroundDrawable extends Drawable {
     mInnerClipTempRectForBorderRadius.left += borderWidth.left;
     mInnerClipTempRectForBorderRadius.right -= borderWidth.right;
 
+    mTempRectForCenterDrawPath.top += borderWidth.top * 0.5f;
+    mTempRectForCenterDrawPath.bottom -= borderWidth.bottom * 0.5f;
+    mTempRectForCenterDrawPath.left += borderWidth.left * 0.5f;
+    mTempRectForCenterDrawPath.right -= borderWidth.right * 0.5f;
+
     final float borderRadius = getFullBorderRadius();
-    float topLeftRadius =
-        getBorderRadiusOrDefaultTo(borderRadius, BorderRadiusLocation.TOP_LEFT);
-    float topRightRadius =
-        getBorderRadiusOrDefaultTo(borderRadius, BorderRadiusLocation.TOP_RIGHT);
+    float topLeftRadius = getBorderRadiusOrDefaultTo(borderRadius, BorderRadiusLocation.TOP_LEFT);
+    float topRightRadius = getBorderRadiusOrDefaultTo(borderRadius, BorderRadiusLocation.TOP_RIGHT);
     float bottomLeftRadius =
         getBorderRadiusOrDefaultTo(borderRadius, BorderRadiusLocation.BOTTOM_LEFT);
     float bottomRightRadius =
         getBorderRadiusOrDefaultTo(borderRadius, BorderRadiusLocation.BOTTOM_RIGHT);
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      final boolean isRTL = getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+      final boolean isRTL = getResolvedLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
       float topStartRadius = getBorderRadius(BorderRadiusLocation.TOP_START);
       float topEndRadius = getBorderRadius(BorderRadiusLocation.TOP_END);
       float bottomStartRadius = getBorderRadius(BorderRadiusLocation.BOTTOM_START);
       float bottomEndRadius = getBorderRadius(BorderRadiusLocation.BOTTOM_END);
-      
-      if (I18nUtil.getInstance().doesRTLFlipLeftAndRightStyles(mContext)) {
+
+      if (I18nUtil.getInstance().doLeftAndRightSwapInRTL(mContext)) {
         if (YogaConstants.isUndefined(topStartRadius)) {
           topStartRadius = topLeftRadius;
         }
@@ -579,18 +646,48 @@ public class ReactViewBackgroundDrawable extends Drawable {
     }
 
     mPathForBorderRadiusOutline.addRoundRect(
-      mTempRectForBorderRadiusOutline,
-      new float[] {
-        topLeftRadius + extraRadiusForOutline,
-        topLeftRadius + extraRadiusForOutline,
-        topRightRadius + extraRadiusForOutline,
-        topRightRadius + extraRadiusForOutline,
-        bottomRightRadius + extraRadiusForOutline,
-        bottomRightRadius + extraRadiusForOutline,
-        bottomLeftRadius + extraRadiusForOutline,
-        bottomLeftRadius + extraRadiusForOutline
-      },
-      Path.Direction.CW);
+        mTempRectForBorderRadiusOutline,
+        new float[] {
+          topLeftRadius + extraRadiusForOutline,
+          topLeftRadius + extraRadiusForOutline,
+          topRightRadius + extraRadiusForOutline,
+          topRightRadius + extraRadiusForOutline,
+          bottomRightRadius + extraRadiusForOutline,
+          bottomRightRadius + extraRadiusForOutline,
+          bottomLeftRadius + extraRadiusForOutline,
+          bottomLeftRadius + extraRadiusForOutline
+        },
+        Path.Direction.CW);
+
+    mCenterDrawPath.addRoundRect(
+        mTempRectForCenterDrawPath,
+        new float[] {
+          Math.max(
+              topLeftRadius - borderWidth.left * 0.5f,
+              (borderWidth.left > 0.0f) ? (topLeftRadius / borderWidth.left) : 0.0f),
+          Math.max(
+              topLeftRadius - borderWidth.top * 0.5f,
+              (borderWidth.top > 0.0f) ? (topLeftRadius / borderWidth.top) : 0.0f),
+          Math.max(
+              topRightRadius - borderWidth.right * 0.5f,
+              (borderWidth.right > 0.0f) ? (topRightRadius / borderWidth.right) : 0.0f),
+          Math.max(
+              topRightRadius - borderWidth.top * 0.5f,
+              (borderWidth.top > 0.0f) ? (topRightRadius / borderWidth.top) : 0.0f),
+          Math.max(
+              bottomRightRadius - borderWidth.right * 0.5f,
+              (borderWidth.right > 0.0f) ? (bottomRightRadius / borderWidth.right) : 0.0f),
+          Math.max(
+              bottomRightRadius - borderWidth.bottom * 0.5f,
+              (borderWidth.bottom > 0.0f) ? (bottomRightRadius / borderWidth.bottom) : 0.0f),
+          Math.max(
+              bottomLeftRadius - borderWidth.left * 0.5f,
+              (borderWidth.left > 0.0f) ? (bottomLeftRadius / borderWidth.left) : 0.0f),
+          Math.max(
+              bottomLeftRadius - borderWidth.bottom * 0.5f,
+              (borderWidth.bottom > 0.0f) ? (bottomLeftRadius / borderWidth.bottom) : 0.0f)
+        },
+        Path.Direction.CW);
 
     /**
      * Rounded Multi-Colored Border Algorithm:
@@ -600,23 +697,29 @@ public class ReactViewBackgroundDrawable extends Drawable {
      * border of V will render inside O.
      *
      * <p>Let BorderWidth = (borderTop, borderLeft, borderBottom, borderRight).
+     *
      * <p>Let I (for inner) = O - BorderWidth.
      *
      * <p>Then, remembering that O and I are rectangles and that I is inside O, O - I gives us the
      * border of V. Therefore, we can use canvas.clipPath to draw V's border.
      *
      * <p>canvas.clipPath(O, Region.OP.INTERSECT);
+     *
      * <p>canvas.clipPath(I, Region.OP.DIFFERENCE);
+     *
      * <p>canvas.drawRect(O, paint);
      *
      * <p>This lets us draw non-rounded single-color borders.
      *
      * <p>To extend this algorithm to rounded single-color borders, we:
+     *
      * <p>1. Curve the corners of O by the (border radii of V) using Path#addRoundRect.
+     *
      * <p>2. Curve the corners of I by (border radii of V - border widths of V) using
      * Path#addRoundRect.
      *
      * <p>Let O' = curve(O, border radii of V).
+     *
      * <p>Let I' = curve(I, border radii of V - border widths of V)
      *
      * <p>The rationale behind this decision is the (first sentence of the) following section in the
@@ -627,7 +730,9 @@ public class ReactViewBackgroundDrawable extends Drawable {
      * render curved single-color borders:
      *
      * <p>canvas.clipPath(O, Region.OP.INTERSECT);
+     *
      * <p>canvas.clipPath(I, Region.OP.DIFFERENCE);
+     *
      * <p>canvas.drawRect(O, paint);
      *
      * <p>To extend this algorithm to rendering multi-colored rounded borders, we render each side
@@ -635,8 +740,11 @@ public class ReactViewBackgroundDrawable extends Drawable {
      * border radii are 0. Then, the four quadrilaterals would be:
      *
      * <p>Left: (O.left, O.top), (I.left, I.top), (I.left, I.bottom), (O.left, O.bottom)
+     *
      * <p>Top: (O.left, O.top), (I.left, I.top), (I.right, I.top), (O.right, O.top)
+     *
      * <p>Right: (O.right, O.top), (I.right, I.top), (I.right, I.bottom), (O.right, O.bottom)
+     *
      * <p>Bottom: (O.right, O.bottom), (I.right, I.bottom), (I.left, I.bottom), (O.left, O.bottom)
      *
      * <p>Now, lets consider what happens when we render a rounded border (radii != 0). For the sake
@@ -789,11 +897,10 @@ public class ReactViewBackgroundDrawable extends Drawable {
     /**
      * Step 1:
      *
-     * Translate the line so that the ellipse is at the origin.
+     * <p>Translate the line so that the ellipse is at the origin.
      *
-     * Why? It makes the math easier by changing the ellipse equation from
-     * ((x - ellipseCenterX)/a)^2 + ((y - ellipseCenterY)/b)^2 = 1 to
-     * (x/a)^2 + (y/b)^2 = 1.
+     * <p>Why? It makes the math easier by changing the ellipse equation from ((x -
+     * ellipseCenterX)/a)^2 + ((y - ellipseCenterY)/b)^2 = 1 to (x/a)^2 + (y/b)^2 = 1.
      */
     lineStartX -= ellipseCenterX;
     lineStartY -= ellipseCenterY;
@@ -803,8 +910,7 @@ public class ReactViewBackgroundDrawable extends Drawable {
     /**
      * Step 2:
      *
-     * Ellipse equation: (x/a)^2 + (y/b)^2 = 1
-     * Line equation: y = mx + c
+     * <p>Ellipse equation: (x/a)^2 + (y/b)^2 = 1 Line equation: y = mx + c
      */
     final double a = Math.abs(ellipseBoundsRight - ellipseBoundsLeft) / 2;
     final double b = Math.abs(ellipseBoundsBottom - ellipseBoundsTop) / 2;
@@ -814,10 +920,10 @@ public class ReactViewBackgroundDrawable extends Drawable {
     /**
      * Step 3:
      *
-     * Substitute the Line equation into the Ellipse equation. Solve for x.
-     * Eventually, you'll have to use the quadratic formula.
+     * <p>Substitute the Line equation into the Ellipse equation. Solve for x. Eventually, you'll
+     * have to use the quadratic formula.
      *
-     * Quadratic formula: Ax^2 + Bx + C = 0
+     * <p>Quadratic formula: Ax^2 + Bx + C = 0
      */
     final double A = (b * b + a * a * m * m);
     final double B = 2 * a * a * c * m;
@@ -826,7 +932,7 @@ public class ReactViewBackgroundDrawable extends Drawable {
     /**
      * Step 4:
      *
-     * Apply Quadratic formula. D = determinant / 2A
+     * <p>Apply Quadratic formula. D = determinant / 2A
      */
     final double D = Math.sqrt(-C / A + Math.pow(B / (2 * A), 2));
     final double x2 = -B / (2 * A) - D;
@@ -835,7 +941,7 @@ public class ReactViewBackgroundDrawable extends Drawable {
     /**
      * Step 5:
      *
-     * Undo the space transformation in Step 5.
+     * <p>Undo the space transformation in Step 5.
      */
     final double x = x2 + ellipseCenterX;
     final double y = y2 + ellipseCenterY;
@@ -860,29 +966,28 @@ public class ReactViewBackgroundDrawable extends Drawable {
     return width;
   }
 
-  /**
-   * Set type of border
-   */
+  /** Set type of border */
   private void updatePathEffect() {
-    mPathEffectForBorderStyle = mBorderStyle != null
-        ? mBorderStyle.getPathEffect(getFullBorderWidth())
-        : null;
+    // Used for rounded border and rounded background
+    PathEffect mPathEffectForBorderStyle =
+        mBorderStyle != null ? BorderStyle.getPathEffect(mBorderStyle, getFullBorderWidth()) : null;
 
     mPaint.setPathEffect(mPathEffectForBorderStyle);
   }
 
   /** For rounded borders we use default "borderWidth" property. */
   public float getFullBorderWidth() {
-    return (mBorderWidth != null && !YogaConstants.isUndefined(mBorderWidth.getRaw(Spacing.ALL))) ?
-        mBorderWidth.getRaw(Spacing.ALL) : 0f;
+    return (mBorderWidth != null && !YogaConstants.isUndefined(mBorderWidth.getRaw(Spacing.ALL)))
+        ? mBorderWidth.getRaw(Spacing.ALL)
+        : 0f;
   }
 
   /**
-   * Quickly determine if all the set border colors are equal.  Bitwise AND all the set colors
-   * together, then OR them all together.  If the AND and the OR are the same, then the colors
-   * are compatible, so return this color.
+   * Quickly determine if all the set border colors are equal. Bitwise AND all the set colors
+   * together, then OR them all together. If the AND and the OR are the same, then the colors are
+   * compatible, so return this color.
    *
-   * Used to avoid expensive path creation and expensive calls to canvas.drawPath
+   * <p>Used to avoid expensive path creation and expensive calls to canvas.drawPath
    *
    * @return A compatible border color, or zero if the border colors are not compatible.
    */
@@ -895,22 +1000,25 @@ public class ReactViewBackgroundDrawable extends Drawable {
       int colorTop,
       int colorRight,
       int colorBottom) {
-    int andSmear = (borderLeft > 0 ? colorLeft : ALL_BITS_SET) &
-        (borderTop > 0 ? colorTop : ALL_BITS_SET) &
-        (borderRight > 0 ? colorRight : ALL_BITS_SET) &
-        (borderBottom > 0 ? colorBottom : ALL_BITS_SET);
-    int orSmear = (borderLeft > 0 ? colorLeft : ALL_BITS_UNSET) |
-        (borderTop > 0 ? colorTop : ALL_BITS_UNSET) |
-        (borderRight > 0 ? colorRight : ALL_BITS_UNSET) |
-        (borderBottom > 0 ? colorBottom : ALL_BITS_UNSET);
+    int andSmear =
+        (borderLeft > 0 ? colorLeft : ALL_BITS_SET)
+            & (borderTop > 0 ? colorTop : ALL_BITS_SET)
+            & (borderRight > 0 ? colorRight : ALL_BITS_SET)
+            & (borderBottom > 0 ? colorBottom : ALL_BITS_SET);
+    int orSmear =
+        (borderLeft > 0 ? colorLeft : ALL_BITS_UNSET)
+            | (borderTop > 0 ? colorTop : ALL_BITS_UNSET)
+            | (borderRight > 0 ? colorRight : ALL_BITS_UNSET)
+            | (borderBottom > 0 ? colorBottom : ALL_BITS_UNSET);
     return andSmear == orSmear ? andSmear : 0;
   }
 
   private void drawRectangularBackgroundWithBorders(Canvas canvas) {
+    mPaint.setStyle(Paint.Style.FILL);
+
     int useColor = ColorUtil.multiplyColorAlpha(mColor, mAlpha);
     if (Color.alpha(useColor) != 0) { // color is not transparent
       mPaint.setColor(useColor);
-      mPaint.setStyle(Paint.Style.FILL);
       canvas.drawRect(getBounds(), mPaint);
     }
 
@@ -930,12 +1038,12 @@ public class ReactViewBackgroundDrawable extends Drawable {
       int colorRight = getBorderColor(Spacing.RIGHT);
       int colorBottom = getBorderColor(Spacing.BOTTOM);
 
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        final boolean isRTL = getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+        final boolean isRTL = getResolvedLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
         int colorStart = getBorderColor(Spacing.START);
         int colorEnd = getBorderColor(Spacing.END);
 
-        if (I18nUtil.getInstance().doesRTLFlipLeftAndRightStyles(mContext)) {
+        if (I18nUtil.getInstance().doLeftAndRightSwapInRTL(mContext)) {
           if (!isBorderColorDefined(Spacing.START)) {
             colorStart = colorLeft;
           }
@@ -955,8 +1063,10 @@ public class ReactViewBackgroundDrawable extends Drawable {
 
           final boolean isColorStartDefined = isBorderColorDefined(Spacing.START);
           final boolean isColorEndDefined = isBorderColorDefined(Spacing.END);
-          final boolean isDirectionAwareColorLeftDefined = isRTL ? isColorEndDefined : isColorStartDefined;
-          final boolean isDirectionAwareColorRightDefined = isRTL ? isColorStartDefined : isColorEndDefined;
+          final boolean isDirectionAwareColorLeftDefined =
+              isRTL ? isColorEndDefined : isColorStartDefined;
+          final boolean isDirectionAwareColorRightDefined =
+              isRTL ? isColorStartDefined : isColorEndDefined;
 
           if (isDirectionAwareColorLeftDefined) {
             colorLeft = directionAwareColorLeft;
@@ -972,15 +1082,16 @@ public class ReactViewBackgroundDrawable extends Drawable {
       int top = bounds.top;
 
       // Check for fast path to border drawing.
-      int fastBorderColor = fastBorderCompatibleColorOrZero(
-          borderLeft,
-          borderTop,
-          borderRight,
-          borderBottom,
-          colorLeft,
-          colorTop,
-          colorRight,
-          colorBottom);
+      int fastBorderColor =
+          fastBorderCompatibleColorOrZero(
+              borderLeft,
+              borderTop,
+              borderRight,
+              borderBottom,
+              colorLeft,
+              colorTop,
+              colorRight,
+              colorBottom);
       if (fastBorderColor != 0) {
         if (Color.alpha(fastBorderColor) != 0) {
           // Border color is not transparent.
@@ -1114,8 +1225,8 @@ public class ReactViewBackgroundDrawable extends Drawable {
   }
 
   private static int colorFromAlphaAndRGBComponents(float alpha, float rgb) {
-    int rgbComponent = 0x00FFFFFF & (int)rgb;
-    int alphaComponent = 0xFF000000 & ((int)alpha) << 24;
+    int rgbComponent = 0x00FFFFFF & (int) rgb;
+    int alphaComponent = 0xFF000000 & ((int) alpha) << 24;
 
     return rgbComponent | alphaComponent;
   }
@@ -1133,6 +1244,7 @@ public class ReactViewBackgroundDrawable extends Drawable {
     return ReactViewBackgroundDrawable.colorFromAlphaAndRGBComponents(alpha, rgb);
   }
 
+  @TargetApi(KITKAT)
   public RectF getDirectionAwareBorderInsets() {
     final float borderWidth = getBorderWidthOrDefaultTo(0, Spacing.ALL);
     final float borderTopWidth = getBorderWidthOrDefaultTo(borderWidth, Spacing.TOP);
@@ -1140,12 +1252,12 @@ public class ReactViewBackgroundDrawable extends Drawable {
     float borderLeftWidth = getBorderWidthOrDefaultTo(borderWidth, Spacing.LEFT);
     float borderRightWidth = getBorderWidthOrDefaultTo(borderWidth, Spacing.RIGHT);
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && mBorderWidth != null) {
-      final boolean isRTL = getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+    if (mBorderWidth != null) {
+      final boolean isRTL = getResolvedLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
       float borderStartWidth = mBorderWidth.getRaw(Spacing.START);
       float borderEndWidth = mBorderWidth.getRaw(Spacing.END);
 
-      if (I18nUtil.getInstance().doesRTLFlipLeftAndRightStyles(mContext)) {
+      if (I18nUtil.getInstance().doLeftAndRightSwapInRTL(mContext)) {
         if (YogaConstants.isUndefined(borderStartWidth)) {
           borderStartWidth = borderLeftWidth;
         }
@@ -1173,11 +1285,6 @@ public class ReactViewBackgroundDrawable extends Drawable {
       }
     }
 
-    return new RectF(
-      borderLeftWidth,
-      borderTopWidth,
-      borderRightWidth,
-      borderBottomWidth
-    );
+    return new RectF(borderLeftWidth, borderTopWidth, borderRightWidth, borderBottomWidth);
   }
 }

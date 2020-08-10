@@ -1,4 +1,9 @@
-// Copyright 2004-present Facebook. All Rights Reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
 
 #pragma once
 
@@ -13,21 +18,34 @@ namespace react {
  * This is a convenience class to avoid lots of verbose profiling
  * #ifdefs.  If WITH_FBSYSTRACE is not defined, the optimizer will
  * remove this completely.  If it is defined, it will behave as
- * FbSystraceSection, with the right tag provided.
+ * FbSystraceSection, with the right tag provided. Use two separate classes to
+ * to ensure that the ODR rule isn't violated, that is, if WITH_FBSYSTRACE has
+ * different values in different files, there is no inconsistency in the sizes
+ * of defined symbols.
  */
-struct SystraceSection {
-public:
-  template<typename... ConvertsToStringPiece>
-  explicit SystraceSection(const char* name, ConvertsToStringPiece&&... args)
 #ifdef WITH_FBSYSTRACE
-    : m_section(TRACE_TAG_REACT_CXX_BRIDGE, name, args...)
-#endif
-  {}
+struct ConcreteSystraceSection {
+ public:
+  template <typename... ConvertsToStringPiece>
+  explicit ConcreteSystraceSection(
+      const char *name,
+      ConvertsToStringPiece &&... args)
+      : m_section(TRACE_TAG_REACT_CXX_BRIDGE, name, args...) {}
 
-private:
-#ifdef WITH_FBSYSTRACE
+ private:
   fbsystrace::FbSystraceSection m_section;
-#endif
 };
+using SystraceSection = ConcreteSystraceSection;
+#else
+struct DummySystraceSection {
+ public:
+  template <typename... ConvertsToStringPiece>
+  explicit DummySystraceSection(
+      __unused const char *name,
+      __unused ConvertsToStringPiece &&... args) {}
+};
+using SystraceSection = DummySystraceSection;
+#endif
 
-}}
+} // namespace react
+} // namespace facebook

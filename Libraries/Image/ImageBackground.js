@@ -1,25 +1,19 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule ImageBackground
  * @flow
  * @format
  */
+
 'use strict';
 
-const Image = require('Image');
-const React = require('React');
-const StyleSheet = require('StyleSheet');
-const View = require('View');
-
-const ensureComponentIsNative = require('ensureComponentIsNative');
-
-import type {NativeMethodsMixinType} from 'ReactNativeTypes';
+const Image = require('./Image');
+const React = require('react');
+const StyleSheet = require('../StyleSheet/StyleSheet');
+const View = require('../Components/View/View');
 
 /**
  * Very simple drop-in replacement for <Image> which supports nesting views.
@@ -33,7 +27,7 @@ import type {NativeMethodsMixinType} from 'ReactNativeTypes';
  *     return (
  *       <ImageBackground
  *         style={{width: 50, height: 50}}
- *         source={{uri: 'https://facebook.github.io/react/logo-og.png'}}
+ *         source={{uri: 'https://reactnative.dev/img/opengraph.png'}}
  *       >
  *         <Text>React</Text>
  *       </ImageBackground>
@@ -50,22 +44,24 @@ class ImageBackground extends React.Component<$FlowFixMeProps> {
     // Work-around flow
     const viewRef = this._viewRef;
     if (viewRef) {
-      ensureComponentIsNative(viewRef);
       viewRef.setNativeProps(props);
     }
   }
 
-  _viewRef: ?NativeMethodsMixinType = null;
+  _viewRef: ?React.ElementRef<typeof View> = null;
 
   _captureRef = ref => {
     this._viewRef = ref;
   };
 
-  render() {
+  render(): React.Node {
     const {children, style, imageStyle, imageRef, ...props} = this.props;
 
     return (
-      <View style={style} ref={this._captureRef}>
+      <View
+        accessibilityIgnoresInvertColors={true}
+        style={style}
+        ref={this._captureRef}>
         <Image
           {...props}
           style={[

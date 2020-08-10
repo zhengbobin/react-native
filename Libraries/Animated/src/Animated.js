@@ -1,37 +1,49 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule Animated
  * @flow
+ * @format
  */
+
 'use strict';
 
+import Platform from '../../Utilities/Platform';
+import typeof AnimatedFlatList from './components/AnimatedFlatList';
+import typeof AnimatedImage from './components/AnimatedImage';
+import typeof AnimatedScrollView from './components/AnimatedScrollView';
+import typeof AnimatedSectionList from './components/AnimatedSectionList';
+import typeof AnimatedText from './components/AnimatedText';
+import typeof AnimatedView from './components/AnimatedView';
 
-var AnimatedImplementation = require('AnimatedImplementation');
-var Image = require('Image');
-var Text = require('Text');
-var View = require('View');
+const AnimatedMock = require('./AnimatedMock');
+const AnimatedImplementation = require('./AnimatedImplementation');
 
-let AnimatedScrollView;
+const Animated = ((Platform.isTesting ||
+(Platform.OS === 'android' && global.RN$Bridgeless)
+  ? AnimatedMock
+  : AnimatedImplementation): typeof AnimatedMock);
 
-const Animated = {
-  View: AnimatedImplementation.createAnimatedComponent(View),
-  Text: AnimatedImplementation.createAnimatedComponent(Text),
-  Image: AnimatedImplementation.createAnimatedComponent(Image),
-  get ScrollView() {
-    // Make this lazy to avoid circular reference.
-    if (!AnimatedScrollView) {
-      AnimatedScrollView = AnimatedImplementation.createAnimatedComponent(require('ScrollView'));
-    }
-    return AnimatedScrollView;
+module.exports = {
+  get FlatList(): AnimatedFlatList {
+    return require('./components/AnimatedFlatList');
   },
+  get Image(): AnimatedImage {
+    return require('./components/AnimatedImage');
+  },
+  get ScrollView(): AnimatedScrollView {
+    return require('./components/AnimatedScrollView');
+  },
+  get SectionList(): AnimatedSectionList {
+    return require('./components/AnimatedSectionList');
+  },
+  get Text(): AnimatedText {
+    return require('./components/AnimatedText');
+  },
+  get View(): AnimatedView {
+    return require('./components/AnimatedView');
+  },
+  ...Animated,
 };
-
-Object.assign((Animated: Object), AnimatedImplementation);
-
-module.exports = ((Animated: any): (typeof AnimatedImplementation) & typeof Animated);

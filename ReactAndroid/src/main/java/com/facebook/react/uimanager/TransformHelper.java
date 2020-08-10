@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
 package com.facebook.react.uimanager;
 
 import com.facebook.react.bridge.JSApplicationIllegalArgumentException;
@@ -11,12 +18,13 @@ import com.facebook.react.bridge.ReadableType;
  */
 public class TransformHelper {
 
-  private static ThreadLocal<double[]> sHelperMatrix = new ThreadLocal<double[]>() {
-    @Override
-    protected double[] initialValue() {
-      return new double[16];
-    }
-  };
+  private static ThreadLocal<double[]> sHelperMatrix =
+      new ThreadLocal<double[]>() {
+        @Override
+        protected double[] initialValue() {
+          return new double[16];
+        }
+      };
 
   private static double convertToRadians(ReadableMap transformMap, String key) {
     double value;
@@ -40,6 +48,17 @@ public class TransformHelper {
     double[] helperMatrix = sHelperMatrix.get();
     MatrixMathHelper.resetIdentityMatrix(result);
 
+    // If the transforms array is actually just the matrix itself,
+    // copy that directly. This is for Fabric LayoutAnimations support.
+    // All of the stuff this Java helper does is already done in C++ in Fabric, so we
+    // can just use that matrix directly.
+    if (transforms.size() == 16 && transforms.getType(0) == ReadableType.Number) {
+      for (int i = 0; i < transforms.size(); i++) {
+        result[i] = transforms.getDouble(i);
+      }
+      return;
+    }
+
     for (int transformIdx = 0, size = transforms.size(); transformIdx < size; transformIdx++) {
       ReadableMap transform = transforms.getMap(transformIdx);
       String transformType = transform.keySetIterator().nextKey();
@@ -53,17 +72,11 @@ public class TransformHelper {
       } else if ("perspective".equals(transformType)) {
         MatrixMathHelper.applyPerspective(helperMatrix, transform.getDouble(transformType));
       } else if ("rotateX".equals(transformType)) {
-        MatrixMathHelper.applyRotateX(
-          helperMatrix,
-          convertToRadians(transform, transformType));
+        MatrixMathHelper.applyRotateX(helperMatrix, convertToRadians(transform, transformType));
       } else if ("rotateY".equals(transformType)) {
-        MatrixMathHelper.applyRotateY(
-          helperMatrix,
-          convertToRadians(transform, transformType));
+        MatrixMathHelper.applyRotateY(helperMatrix, convertToRadians(transform, transformType));
       } else if ("rotate".equals(transformType) || "rotateZ".equals(transformType)) {
-        MatrixMathHelper.applyRotateZ(
-          helperMatrix,
-          convertToRadians(transform, transformType));
+        MatrixMathHelper.applyRotateZ(helperMatrix, convertToRadians(transform, transformType));
       } else if ("scale".equals(transformType)) {
         double scale = transform.getDouble(transformType);
         MatrixMathHelper.applyScaleX(helperMatrix, scale);
@@ -83,16 +96,12 @@ public class TransformHelper {
       } else if ("translateY".equals(transformType)) {
         MatrixMathHelper.applyTranslate2D(helperMatrix, 0d, transform.getDouble(transformType));
       } else if ("skewX".equals(transformType)) {
-        MatrixMathHelper.applySkewX(
-          helperMatrix,
-          convertToRadians(transform, transformType));
+        MatrixMathHelper.applySkewX(helperMatrix, convertToRadians(transform, transformType));
       } else if ("skewY".equals(transformType)) {
-        MatrixMathHelper.applySkewY(
-          helperMatrix,
-          convertToRadians(transform, transformType));
+        MatrixMathHelper.applySkewY(helperMatrix, convertToRadians(transform, transformType));
       } else {
-        throw new JSApplicationIllegalArgumentException("Unsupported transform type: "
-          + transformType);
+        throw new JSApplicationIllegalArgumentException(
+            "Unsupported transform type: " + transformType);
       }
 
       MatrixMathHelper.multiplyInto(result, result, helperMatrix);

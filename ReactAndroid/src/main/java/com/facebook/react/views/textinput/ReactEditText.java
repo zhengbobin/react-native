@@ -1,78 +1,86 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.views.textinput;
+
+import static com.facebook.react.uimanager.UIManagerHelper.getReactContext;
 
 import android.content.Context;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.method.KeyListener;
 import android.text.method.QwertyKeyListener;
-import android.text.style.AbsoluteSizeSpan;
-import android.text.style.BackgroundColorSpan;
-import android.text.style.ForegroundColorSpan;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
-import android.widget.EditText;
+import androidx.annotation.Nullable;
+import androidx.appcompat.widget.AppCompatEditText;
+import androidx.core.view.AccessibilityDelegateCompat;
+import androidx.core.view.ViewCompat;
 import com.facebook.infer.annotation.Assertions;
+import com.facebook.react.bridge.JavaOnlyMap;
 import com.facebook.react.bridge.ReactContext;
+import com.facebook.react.uimanager.FabricViewStateManager;
 import com.facebook.react.uimanager.UIManagerModule;
-import com.facebook.react.views.text.CustomStyleSpan;
-import com.facebook.react.views.text.ReactTagSpan;
+import com.facebook.react.views.text.ReactSpan;
 import com.facebook.react.views.text.ReactTextUpdate;
+import com.facebook.react.views.text.ReactTypefaceUtils;
+import com.facebook.react.views.text.TextAttributes;
 import com.facebook.react.views.text.TextInlineImageSpan;
 import com.facebook.react.views.view.ReactViewBackgroundManager;
 import java.util.ArrayList;
-import javax.annotation.Nullable;
 
 /**
  * A wrapper around the EditText that lets us better control what happens when an EditText gets
  * focused or blurred, and when to display the soft keyboard and when not to.
  *
- * ReactEditTexts have setFocusableInTouchMode set to false automatically because touches on the
- * EditText are managed on the JS side. This also removes the nasty side effect that EditTexts
- * have, which is that focus is always maintained on one of the EditTexts.
+ * <p>ReactEditTexts have setFocusableInTouchMode set to false automatically because touches on the
+ * EditText are managed on the JS side. This also removes the nasty side effect that EditTexts have,
+ * which is that focus is always maintained on one of the EditTexts.
  *
- * The wrapper stops the EditText from triggering *TextChanged events, in the case where JS
- * has called this explicitly. This is the default behavior on other platforms as well.
+ * <p>The wrapper stops the EditText from triggering *TextChanged events, in the case where JS has
+ * called this explicitly. This is the default behavior on other platforms as well.
  * VisibleForTesting from {@link TextInputEventsTestCase}.
  */
-public class ReactEditText extends EditText {
+public class ReactEditText extends AppCompatEditText
+    implements FabricViewStateManager.HasFabricViewStateManager {
 
   private final InputMethodManager mInputMethodManager;
   // This flag is set to true when we set the text of the EditText explicitly. In that case, no
   // *TextChanged events should be triggered. This is less expensive than removing the text
   // listeners and adding them back again after the text change is completed.
-  private boolean mIsSettingTextFromJS;
-  // This component is controlled, so we want it to get focused only when JS ask it to do so.
-  // Whenever android requests focus (which it does for random reasons), it will be ignored.
-  private boolean mIsJSSettingFocus;
+  protected boolean mIsSettingTextFromJS;
   private int mDefaultGravityHorizontal;
   private int mDefaultGravityVertical;
-  private int mNativeEventCount;
-  private int mMostRecentEventCount;
+
+  /** A count of events sent to JS or C++. */
+  protected int mNativeEventCount;
+
+  private static final int UNSET = -1;
+
   private @Nullable ArrayList<TextWatcher> mListeners;
   private @Nullable TextWatcherDelegator mTextWatcherDelegator;
   private int mStagedInputType;
-  private boolean mContainsImages;
+  protected boolean mContainsImages;
   private @Nullable Boolean mBlurOnSubmit;
   private boolean mDisableFullscreen;
   private @Nullable String mReturnKeyType;
@@ -81,8 +89,22 @@ public class ReactEditText extends EditText {
   private @Nullable ScrollWatcher mScrollWatcher;
   private final InternalKeyListener mKeyListener;
   private boolean mDetectScrollMovement = false;
+  private boolean mOnKeyPress = false;
+  private TextAttributes mTextAttributes;
+  private boolean mTypefaceDirty = false;
+  private @Nullable String mFontFamily = null;
+  private int mFontWeight = ReactTypefaceUtils.UNSET;
+  private int mFontStyle = ReactTypefaceUtils.UNSET;
+  private boolean mAutoFocus = false;
+  private boolean mDidAttachToWindow = false;
 
   private ReactViewBackgroundManager mReactBackgroundManager;
+
+  protected @Nullable JavaOnlyMap mAttributedString = null;
+  private final FabricViewStateManager mFabricViewStateManager = new FabricViewStateManager();
+  protected boolean mDisableTextDiffing = false;
+
+  protected boolean mIsSettingTextFromState = false;
 
   private static final KeyListener sKeyListener = QwertyKeyListener.getInstanceForFullKeyboard();
 
@@ -91,15 +113,14 @@ public class ReactEditText extends EditText {
     setFocusableInTouchMode(false);
 
     mReactBackgroundManager = new ReactViewBackgroundManager(this);
-    mInputMethodManager = (InputMethodManager)
-        Assertions.assertNotNull(getContext().getSystemService(Context.INPUT_METHOD_SERVICE));
+    mInputMethodManager =
+        (InputMethodManager)
+            Assertions.assertNotNull(context.getSystemService(Context.INPUT_METHOD_SERVICE));
     mDefaultGravityHorizontal =
         getGravity() & (Gravity.HORIZONTAL_GRAVITY_MASK | Gravity.RELATIVE_HORIZONTAL_GRAVITY_MASK);
     mDefaultGravityVertical = getGravity() & Gravity.VERTICAL_GRAVITY_MASK;
     mNativeEventCount = 0;
-    mMostRecentEventCount = 0;
     mIsSettingTextFromJS = false;
-    mIsJSSettingFocus = false;
     mBlurOnSubmit = null;
     mDisableFullscreen = false;
     mListeners = null;
@@ -107,6 +128,28 @@ public class ReactEditText extends EditText {
     mStagedInputType = getInputType();
     mKeyListener = new InternalKeyListener();
     mScrollWatcher = null;
+    mTextAttributes = new TextAttributes();
+
+    applyTextAttributes();
+
+    // Turn off hardware acceleration for Oreo (T40484798)
+    // see https://issuetracker.google.com/issues/67102093
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        && Build.VERSION.SDK_INT <= Build.VERSION_CODES.O_MR1) {
+      setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+    }
+
+    ViewCompat.setAccessibilityDelegate(
+        this,
+        new AccessibilityDelegateCompat() {
+          @Override
+          public boolean performAccessibilityAction(View host, int action, Bundle args) {
+            if (action == AccessibilityNodeInfo.ACTION_CLICK) {
+              return requestFocusInternal();
+            }
+            return super.performAccessibilityAction(host, action, args);
+          }
+        });
   }
 
   // After the text changes inside an EditText, TextView checks if a layout() has been requested.
@@ -117,16 +160,7 @@ public class ReactEditText extends EditText {
   // TODO: t6408636 verify if we should schedule a layout after a View does a requestLayout()
   @Override
   public boolean isLayoutRequested() {
-    // If we are watching and updating container height based on content size
-    // then we don't want to scroll right away. This isn't perfect -- you might
-    // want to limit the height the text input can grow to. Possible solution
-    // is to add another prop that determines whether we should scroll to end
-    // of text.
-    if (mContentSizeWatcher != null) {
-      return isMultiline();
-    } else {
-      return false;
-    }
+    return false;
   }
 
   @Override
@@ -145,10 +179,10 @@ public class ReactEditText extends EditText {
         break;
       case MotionEvent.ACTION_MOVE:
         if (mDetectScrollMovement) {
-          if (!canScrollVertically(-1) &&
-              !canScrollVertically(1) &&
-              !canScrollHorizontally(-1) &&
-              !canScrollHorizontally(1)) {
+          if (!canScrollVertically(-1)
+              && !canScrollVertically(1)
+              && !canScrollHorizontally(-1)
+              && !canScrollHorizontally(1)) {
             // We cannot scroll, let parent views take care of these touches.
             this.getParent().requestDisallowInterceptTouchEvent(false);
           }
@@ -181,12 +215,18 @@ public class ReactEditText extends EditText {
 
   @Override
   public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
-    InputConnection connection = super.onCreateInputConnection(outAttrs);
+    ReactContext reactContext = getReactContext(this);
+    InputConnection inputConnection = super.onCreateInputConnection(outAttrs);
+    if (inputConnection != null && mOnKeyPress) {
+      inputConnection =
+          new ReactEditTextInputConnectionWrapper(inputConnection, reactContext, this);
+    }
+
     if (isMultiline() && getBlurOnSubmit()) {
       // Remove IME_FLAG_NO_ENTER_ACTION to keep the original IME_OPTION
       outAttrs.imeOptions &= ~EditorInfo.IME_FLAG_NO_ENTER_ACTION;
     }
-    return connection;
+    return inputConnection;
   }
 
   @Override
@@ -198,17 +238,21 @@ public class ReactEditText extends EditText {
 
   @Override
   public boolean requestFocus(int direction, Rect previouslyFocusedRect) {
-    // Always return true if we are already focused. This is used by android in certain places,
-    // such as text selection.
-    if (isFocused()) {
-      return true;
-    }
-    if (!mIsJSSettingFocus) {
-      return false;
-    }
+    // This is a no-op so that when the OS calls requestFocus(), nothing will happen. ReactEditText
+    // is a controlled component, which means its focus is controlled by JS, with two exceptions:
+    // autofocus when it's attached to the window, and responding to accessibility events. In both
+    // of these cases, we call requestFocusInternal() directly.
+    return isFocused();
+  }
+
+  private boolean requestFocusInternal() {
     setFocusableInTouchMode(true);
-    boolean focused = super.requestFocus(direction, previouslyFocusedRect);
-    showSoftKeyboard();
+    // We must explicitly call this method on the super class; if we call requestFocus() without
+    // any arguments, it will call into the overridden requestFocus(int, Rect) above, which no-ops.
+    boolean focused = super.requestFocus(View.FOCUS_DOWN, null);
+    if (getShowSoftInputOnFocus()) {
+      showSoftKeyboard();
+    }
     return focused;
   }
 
@@ -242,13 +286,26 @@ public class ReactEditText extends EditText {
     mScrollWatcher = scrollWatcher;
   }
 
-  @Override
-  public void setSelection(int start, int end) {
-    // Skip setting the selection if the text wasn't set because of an out of date value.
-    if (mMostRecentEventCount < mNativeEventCount) {
+  /**
+   * Attempt to set a selection or fail silently. Intentionally meant to handle bad inputs.
+   * EventCounter is the same one used as with text.
+   *
+   * @param eventCounter
+   * @param start
+   * @param end
+   */
+  public void maybeSetSelection(int eventCounter, int start, int end) {
+    if (!canUpdateWithEventCount(eventCounter)) {
       return;
     }
 
+    if (start != UNSET && end != UNSET) {
+      setSelection(start, end);
+    }
+  }
+
+  @Override
+  public void setSelection(int start, int end) {
     super.setSelection(start, end);
   }
 
@@ -261,8 +318,7 @@ public class ReactEditText extends EditText {
   }
 
   @Override
-  protected void onFocusChanged(
-      boolean focused, int direction, Rect previouslyFocusedRect) {
+  protected void onFocusChanged(boolean focused, int direction, Rect previouslyFocusedRect) {
     super.onFocusChanged(focused, direction, previouslyFocusedRect);
     if (focused && mSelectionWatcher != null) {
       mSelectionWatcher.onSelectionChanged(getSelectionStart(), getSelectionEnd());
@@ -275,6 +331,10 @@ public class ReactEditText extends EditText {
 
   public void setBlurOnSubmit(@Nullable Boolean blurOnSubmit) {
     mBlurOnSubmit = blurOnSubmit;
+  }
+
+  public void setOnKeyPress(boolean onKeyPress) {
+    mOnKeyPress = onKeyPress;
   }
 
   public boolean getBlurOnSubmit() {
@@ -314,7 +374,10 @@ public class ReactEditText extends EditText {
 
   /*package*/ void commitStagedInputType() {
     if (getInputType() != mStagedInputType) {
+      int selectionStart = getSelectionStart();
+      int selectionEnd = getSelectionEnd();
       setInputType(mStagedInputType);
+      setSelection(selectionStart, selectionEnd);
     }
   }
 
@@ -326,6 +389,16 @@ public class ReactEditText extends EditText {
     // Input type password defaults to monospace font, so we need to re-apply the font
     super.setTypeface(tf);
 
+    /**
+     * If set forces multiline on input, because of a restriction on Android source that enables
+     * multiline only for inputs of type Text and Multiline on method {@link
+     * android.widget.TextView#isMultilineInputType(int)}} Source: {@Link <a
+     * href='https://android.googlesource.com/platform/frameworks/base/+/jb-release/core/java/android/widget/TextView.java'>TextView.java</a>}
+     */
+    if (isMultiline()) {
+      setSingleLine(false);
+    }
+
     // We override the KeyListener so that all keys on the soft input keyboard as well as hardware
     // keyboards work. Some KeyListeners like DigitsKeyListener will display the keyboard but not
     // accept all input from it
@@ -333,11 +406,43 @@ public class ReactEditText extends EditText {
     setKeyListener(mKeyListener);
   }
 
+  public void setFontFamily(String fontFamily) {
+    mFontFamily = fontFamily;
+    mTypefaceDirty = true;
+  }
+
+  public void setFontWeight(String fontWeightString) {
+    int fontWeight = ReactTypefaceUtils.parseFontWeight(fontWeightString);
+    if (fontWeight != mFontWeight) {
+      mFontWeight = fontWeight;
+      mTypefaceDirty = true;
+    }
+  }
+
+  public void setFontStyle(String fontStyleString) {
+    int fontStyle = ReactTypefaceUtils.parseFontStyle(fontStyleString);
+    if (fontStyle != mFontStyle) {
+      mFontStyle = fontStyle;
+      mTypefaceDirty = true;
+    }
+  }
+
+  public void maybeUpdateTypeface() {
+    if (!mTypefaceDirty) {
+      return;
+    }
+
+    mTypefaceDirty = false;
+
+    Typeface newTypeface =
+        ReactTypefaceUtils.applyStyles(
+            getTypeface(), mFontStyle, mFontWeight, mFontFamily, getContext().getAssets());
+    setTypeface(newTypeface);
+  }
+
   // VisibleForTesting from {@link TextInputEventsTestCase}.
   public void requestFocusFromJS() {
-    mIsJSSettingFocus = true;
-    requestFocus();
-    mIsJSSettingFocus = false;
+    requestFocusInternal();
   }
 
   /* package */ void clearFocusFromJS() {
@@ -349,27 +454,63 @@ public class ReactEditText extends EditText {
     return ++mNativeEventCount;
   }
 
+  public void maybeSetTextFromJS(ReactTextUpdate reactTextUpdate) {
+    mIsSettingTextFromJS = true;
+    maybeSetText(reactTextUpdate);
+    mIsSettingTextFromJS = false;
+  }
+
+  public void maybeSetTextFromState(ReactTextUpdate reactTextUpdate) {
+    mIsSettingTextFromState = true;
+    maybeSetText(reactTextUpdate);
+    mIsSettingTextFromState = false;
+  }
+
+  public boolean canUpdateWithEventCount(int eventCounter) {
+    return eventCounter >= mNativeEventCount;
+  }
+
   // VisibleForTesting from {@link TextInputEventsTestCase}.
   public void maybeSetText(ReactTextUpdate reactTextUpdate) {
-    // Only set the text if it is up to date.
-    mMostRecentEventCount = reactTextUpdate.getJsEventCounter();
-    if (mMostRecentEventCount < mNativeEventCount) {
+    if (isSecureText() && TextUtils.equals(getText(), reactTextUpdate.getText())) {
       return;
+    }
+
+    // Only set the text if it is up to date.
+    if (!canUpdateWithEventCount(reactTextUpdate.getJsEventCounter())) {
+      return;
+    }
+
+    if (reactTextUpdate.mAttributedString != null) {
+      mAttributedString = JavaOnlyMap.deepClone(reactTextUpdate.mAttributedString);
     }
 
     // The current text gets replaced with the text received from JS. However, the spans on the
     // current text need to be adapted to the new text. Since TextView#setText() will remove or
     // reset some of these spans even if they are set directly, SpannableStringBuilder#replace() is
-    // used instead (this is also used by the the keyboard implementation underneath the covers).
+    // used instead (this is also used by the keyboard implementation underneath the covers).
     SpannableStringBuilder spannableStringBuilder =
         new SpannableStringBuilder(reactTextUpdate.getText());
     manageSpans(spannableStringBuilder);
     mContainsImages = reactTextUpdate.containsImages();
-    mIsSettingTextFromJS = true;
 
-    getText().replace(0, length(), spannableStringBuilder);
+    // When we update text, we trigger onChangeText code that will
+    // try to update state if the wrapper is available. Temporarily disable
+    // to prevent an (asynchronous) infinite loop.
+    mDisableTextDiffing = true;
 
-    mIsSettingTextFromJS = false;
+    // On some devices, when the text is cleared, buggy keyboards will not clear the composing
+    // text so, we have to set text to null, which will clear the currently composing text.
+    if (reactTextUpdate.getText().length() == 0) {
+      setText(null);
+    } else {
+      // When we update text, we trigger onChangeText code that will
+      // try to update state if the wrapper is available. Temporarily disable
+      // to prevent an infinite loop.
+      getText().replace(0, length(), spannableStringBuilder);
+    }
+    mDisableTextDiffing = false;
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       if (getBreakStrategy() != reactTextUpdate.getTextBreakStrategy()) {
         setBreakStrategy(reactTextUpdate.getTextBreakStrategy());
@@ -387,16 +528,12 @@ public class ReactEditText extends EditText {
     Object[] spans = getText().getSpans(0, length(), Object.class);
     for (int spanIdx = 0; spanIdx < spans.length; spanIdx++) {
       // Remove all styling spans we might have previously set
-      if (ForegroundColorSpan.class.isInstance(spans[spanIdx]) ||
-          BackgroundColorSpan.class.isInstance(spans[spanIdx]) ||
-          AbsoluteSizeSpan.class.isInstance(spans[spanIdx]) ||
-          CustomStyleSpan.class.isInstance(spans[spanIdx]) ||
-          ReactTagSpan.class.isInstance(spans[spanIdx])) {
+      if (spans[spanIdx] instanceof ReactSpan) {
         getText().removeSpan(spans[spanIdx]);
       }
 
-      if ((getText().getSpanFlags(spans[spanIdx]) & Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) !=
-          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) {
+      if ((getText().getSpanFlags(spans[spanIdx]) & Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+          != Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) {
         continue;
       }
       Object span = spans[spanIdx];
@@ -429,11 +566,11 @@ public class ReactEditText extends EditText {
     return true;
   }
 
-  private boolean showSoftKeyboard() {
+  protected boolean showSoftKeyboard() {
     return mInputMethodManager.showSoftInput(this, 0);
   }
 
-  private void hideSoftKeyboard() {
+  protected void hideSoftKeyboard() {
     mInputMethodManager.hideSoftInputFromWindow(getWindowToken(), 0);
   }
 
@@ -444,8 +581,14 @@ public class ReactEditText extends EditText {
     return mTextWatcherDelegator;
   }
 
-  private boolean isMultiline() {
+  /* package */ boolean isMultiline() {
     return (getInputType() & InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0;
+  }
+
+  private boolean isSecureText() {
+    return (getInputType()
+            & (InputType.TYPE_NUMBER_VARIATION_PASSWORD | InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        != 0;
   }
 
   private void onContentSizeChange() {
@@ -456,11 +599,21 @@ public class ReactEditText extends EditText {
     setIntrinsicContentSize();
   }
 
+  // TODO T58784068: delete this method
   private void setIntrinsicContentSize() {
-    ReactContext reactContext = (ReactContext) getContext();
-    UIManagerModule uiManager = reactContext.getNativeModule(UIManagerModule.class);
-    final ReactTextInputLocalData localData = new ReactTextInputLocalData(this);
-    uiManager.setViewLocalData(getId(), localData);
+    // This serves as a check for whether we're running under Paper or Fabric.
+    // By the time this is called, in Fabric we will have a state
+    // wrapper 100% of the time.
+    // Since the LocalData object is constructed by getting values from the underlying EditText
+    // view, we don't need to construct one or apply it at all - it provides no use in Fabric.
+    if (!mFabricViewStateManager.hasStateWrapper()) {
+      ReactContext reactContext = getReactContext(this);
+      final ReactTextInputLocalData localData = new ReactTextInputLocalData(this);
+      UIManagerModule uiManager = reactContext.getNativeModule(UIManagerModule.class);
+      if (uiManager != null) {
+        uiManager.setViewLocalData(getId(), localData);
+      }
+    }
   }
 
   /* package */ void setGravityHorizontal(int gravityHorizontal) {
@@ -468,8 +621,10 @@ public class ReactEditText extends EditText {
       gravityHorizontal = mDefaultGravityHorizontal;
     }
     setGravity(
-        (getGravity() & ~Gravity.HORIZONTAL_GRAVITY_MASK &
-            ~Gravity.RELATIVE_HORIZONTAL_GRAVITY_MASK) | gravityHorizontal);
+        (getGravity()
+                & ~Gravity.HORIZONTAL_GRAVITY_MASK
+                & ~Gravity.RELATIVE_HORIZONTAL_GRAVITY_MASK)
+            | gravityHorizontal);
   }
 
   /* package */ void setGravityVertical(int gravityVertical) {
@@ -517,8 +672,8 @@ public class ReactEditText extends EditText {
 
   @Override
   protected boolean verifyDrawable(Drawable drawable) {
-    if (mContainsImages && getText() instanceof Spanned) {
-      Spanned text = (Spanned) getText();
+    if (mContainsImages) {
+      Spanned text = getText();
       TextInlineImageSpan[] spans = text.getSpans(0, text.length(), TextInlineImageSpan.class);
       for (TextInlineImageSpan span : spans) {
         if (span.getDrawable() == drawable) {
@@ -531,8 +686,8 @@ public class ReactEditText extends EditText {
 
   @Override
   public void invalidateDrawable(Drawable drawable) {
-    if (mContainsImages && getText() instanceof Spanned) {
-      Spanned text = (Spanned) getText();
+    if (mContainsImages) {
+      Spanned text = getText();
       TextInlineImageSpan[] spans = text.getSpans(0, text.length(), TextInlineImageSpan.class);
       for (TextInlineImageSpan span : spans) {
         if (span.getDrawable() == drawable) {
@@ -546,8 +701,8 @@ public class ReactEditText extends EditText {
   @Override
   public void onDetachedFromWindow() {
     super.onDetachedFromWindow();
-    if (mContainsImages && getText() instanceof Spanned) {
-      Spanned text = (Spanned) getText();
+    if (mContainsImages) {
+      Spanned text = getText();
       TextInlineImageSpan[] spans = text.getSpans(0, text.length(), TextInlineImageSpan.class);
       for (TextInlineImageSpan span : spans) {
         span.onDetachedFromWindow();
@@ -558,8 +713,8 @@ public class ReactEditText extends EditText {
   @Override
   public void onStartTemporaryDetach() {
     super.onStartTemporaryDetach();
-    if (mContainsImages && getText() instanceof Spanned) {
-      Spanned text = (Spanned) getText();
+    if (mContainsImages) {
+      Spanned text = getText();
       TextInlineImageSpan[] spans = text.getSpans(0, text.length(), TextInlineImageSpan.class);
       for (TextInlineImageSpan span : spans) {
         span.onStartTemporaryDetach();
@@ -570,20 +725,26 @@ public class ReactEditText extends EditText {
   @Override
   public void onAttachedToWindow() {
     super.onAttachedToWindow();
-    if (mContainsImages && getText() instanceof Spanned) {
-      Spanned text = (Spanned) getText();
+    if (mContainsImages) {
+      Spanned text = getText();
       TextInlineImageSpan[] spans = text.getSpans(0, text.length(), TextInlineImageSpan.class);
       for (TextInlineImageSpan span : spans) {
         span.onAttachedToWindow();
       }
     }
+
+    if (mAutoFocus && !mDidAttachToWindow) {
+      requestFocusInternal();
+    }
+
+    mDidAttachToWindow = true;
   }
 
   @Override
   public void onFinishTemporaryDetach() {
     super.onFinishTemporaryDetach();
-    if (mContainsImages && getText() instanceof Spanned) {
-      Spanned text = (Spanned) getText();
+    if (mContainsImages) {
+      Spanned text = getText();
       TextInlineImageSpan[] spans = text.getSpans(0, text.length(), TextInlineImageSpan.class);
       for (TextInlineImageSpan span : spans) {
         span.onFinishTemporaryDetach();
@@ -616,9 +777,58 @@ public class ReactEditText extends EditText {
     mReactBackgroundManager.setBorderStyle(style);
   }
 
+  public void setLetterSpacingPt(float letterSpacingPt) {
+    mTextAttributes.setLetterSpacing(letterSpacingPt);
+    applyTextAttributes();
+  }
+
+  public void setAllowFontScaling(boolean allowFontScaling) {
+    if (mTextAttributes.getAllowFontScaling() != allowFontScaling) {
+      mTextAttributes.setAllowFontScaling(allowFontScaling);
+      applyTextAttributes();
+    }
+  }
+
+  public void setFontSize(float fontSize) {
+    mTextAttributes.setFontSize(fontSize);
+    applyTextAttributes();
+  }
+
+  public void setMaxFontSizeMultiplier(float maxFontSizeMultiplier) {
+    if (maxFontSizeMultiplier != mTextAttributes.getMaxFontSizeMultiplier()) {
+      mTextAttributes.setMaxFontSizeMultiplier(maxFontSizeMultiplier);
+      applyTextAttributes();
+    }
+  }
+
+  public void setAutoFocus(boolean autoFocus) {
+    mAutoFocus = autoFocus;
+  }
+
+  protected void applyTextAttributes() {
+    // In general, the `getEffective*` functions return `Float.NaN` if the
+    // property hasn't been set.
+
+    // `getEffectiveFontSize` always returns a value so don't need to check for anything like
+    // `Float.NaN`.
+    setTextSize(TypedValue.COMPLEX_UNIT_PX, mTextAttributes.getEffectiveFontSize());
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      float effectiveLetterSpacing = mTextAttributes.getEffectiveLetterSpacing();
+      if (!Float.isNaN(effectiveLetterSpacing)) {
+        setLetterSpacing(effectiveLetterSpacing);
+      }
+    }
+  }
+
+  @Override
+  public FabricViewStateManager getFabricViewStateManager() {
+    return mFabricViewStateManager;
+  }
+
   /**
-   * This class will redirect *TextChanged calls to the listeners only in the case where the text
-   * is changed by the user, and not explicitly set by JS.
+   * This class will redirect *TextChanged calls to the listeners only in the case where the text is
+   * changed by the user, and not explicitly set by JS.
    */
   private class TextWatcherDelegator implements TextWatcher {
     @Override
@@ -662,8 +872,7 @@ public class ReactEditText extends EditText {
 
     private int mInputType = 0;
 
-    public InternalKeyListener() {
-    }
+    public InternalKeyListener() {}
 
     public void setInputType(int inputType) {
       mInputType = inputType;

@@ -1,10 +1,8 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import "RCTCxxModule.h"
@@ -18,8 +16,7 @@
 
 using namespace facebook::react;
 
-@implementation RCTCxxModule
-{
+@implementation RCTCxxModule {
   std::unique_ptr<facebook::xplat::module::CxxModule> _module;
 }
 
@@ -39,9 +36,11 @@ using namespace facebook::react;
     _module = [self createModule];
 
     if (_module) {
-      RCTAssert([RCTBridgeModuleNameForClass([self class]) isEqualToString:@(_module->getName().c_str())],
-                @"CxxModule class name %@ does not match runtime name %s",
-                RCTBridgeModuleNameForClass([self class]), _module->getName().c_str());
+      RCTAssert(
+          [RCTBridgeModuleNameForClass([self class]) isEqualToString:@(_module->getName().c_str())],
+          @"CxxModule class name %@ does not match runtime name %s",
+          RCTBridgeModuleNameForClass([self class]),
+          _module->getName().c_str());
     }
   }
 }
@@ -52,7 +51,7 @@ using namespace facebook::react;
   return nullptr;
 }
 
-- (NSArray<id<RCTBridgeMethod>> *)methodsToExport;
+- (NSArray<id<RCTBridgeMethod>> *)methodsToExport
 {
   [self lazyInit];
   if (!_module) {
@@ -66,7 +65,12 @@ using namespace facebook::react;
   return moduleMethods;
 }
 
-- (NSDictionary<NSString *, id> *)constantsToExport;
+- (NSDictionary<NSString *, id> *)constantsToExport
+{
+  return [self getConstants];
+}
+
+- (NSDictionary<NSString *, id> *)getConstants
 {
   [self lazyInit];
   if (!_module) {

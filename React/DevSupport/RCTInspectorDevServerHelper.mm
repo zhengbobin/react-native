@@ -1,26 +1,34 @@
-#import "RCTInspectorDevServerHelper.h"
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+#import <React/RCTInspectorDevServerHelper.h>
 
 #if RCT_DEV
 
-#import <jschelpers/JSCWrapper.h>
+#import <React/RCTLog.h>
 #import <UIKit/UIKit.h>
 
-#import "RCTDefines.h"
-#import "RCTInspectorPackagerConnection.h"
-
-using namespace facebook::react;
+#import <React/RCTDefines.h>
+#import <React/RCTInspectorPackagerConnection.h>
 
 static NSString *const kDebuggerMsgDisable = @"{ \"id\":1,\"method\":\"Debugger.disable\" }";
 
-static NSString *getDebugServerHost(NSURL *bundleURL)
+static NSString *getServerHost(NSURL *bundleURL)
 {
+  NSNumber *port = @8081;
+  NSString *portStr = [[[NSProcessInfo processInfo] environment] objectForKey:@"RCT_METRO_PORT"];
+  if (portStr && [portStr length] > 0) {
+    port = [NSNumber numberWithInt:[portStr intValue]];
+  }
+
   NSString *host = [bundleURL host];
   if (!host) {
     host = @"localhost";
   }
-
-  // Inspector Proxy is run on a separate port (from packager).
-  NSNumber *port = @8082;
 
   // this is consistent with the Android implementation, where http:// is the
   // hardcoded implicit scheme for the debug server. Note, packagerURL
@@ -32,18 +40,22 @@ static NSString *getDebugServerHost(NSURL *bundleURL)
 
 static NSURL *getInspectorDeviceUrl(NSURL *bundleURL)
 {
-  NSString *escapedDeviceName = [[[UIDevice currentDevice] name] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
-  NSString *escapedAppName = [[[NSBundle mainBundle] bundleIdentifier] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+  NSString *escapedDeviceName = [[[UIDevice currentDevice] name]
+      stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];
+  NSString *escapedAppName = [[[NSBundle mainBundle] bundleIdentifier]
+      stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];
   return [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/inspector/device?name=%@&app=%@",
-                                                        getDebugServerHost(bundleURL),
-                                                        escapedDeviceName,
-                                                        escapedAppName]];
+                                                         getServerHost(bundleURL),
+                                                         escapedDeviceName,
+                                                         escapedAppName]];
 }
-
-
+static NSURL *getOpenUrlEndpoint(NSURL *bundleURL)
+{
+  return [NSURL URLWithString:[NSString stringWithFormat:@"http://%@/open-url", getServerHost(bundleURL)]];
+}
 @implementation RCTInspectorDevServerHelper
 
-RCT_NOT_IMPLEMENTED(- (instancetype)init)
+RCT_NOT_IMPLEMENTED(-(instancetype)init)
 
 static NSMutableDictionary<NSString *, RCTInspectorPackagerConnection *> *socketConnections = nil;
 
@@ -54,18 +66,34 @@ static void sendEventToAllConnections(NSString *event)
   }
 }
 
++ (void)openURL:(NSString *)url withBundleURL:(NSURL *)bundleURL withErrorMessage:(NSString *)errorMessage
+{
+  NSURL *endpoint = getOpenUrlEndpoint(bundleURL);
+
+  NSDictionary *jsonBodyDict = @{@"url" : url};
+  NSData *jsonBodyData = [NSJSONSerialization dataWithJSONObject:jsonBodyDict options:kNilOptions error:nil];
+
+  NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:endpoint];
+  [request setHTTPMethod:@"POST"];
+  [request setHTTPBody:jsonBodyData];
+
+  [[[NSURLSession sharedSession]
+      dataTaskWithRequest:request
+        completionHandler:^(
+            __unused NSData *_Nullable data, __unused NSURLResponse *_Nullable response, NSError *_Nullable error) {
+          if (error != nullptr) {
+            RCTLogWarn(@"%@", errorMessage);
+          }
+        }] resume];
+}
+
 + (void)disableDebugger
 {
   sendEventToAllConnections(kDebuggerMsgDisable);
 }
 
-+ (void)connectForContext:(JSGlobalContextRef)context
-            withBundleURL:(NSURL *)bundleURL
++ (RCTInspectorPackagerConnection *)connectWithBundleURL:(NSURL *)bundleURL
 {
-  if (!isCustomJSCPtr(context)) {
-    return;
-  }
-
   NSURL *inspectorURL = getInspectorDeviceUrl(bundleURL);
 
   // Note, using a static dictionary isn't really the greatest design, but
@@ -77,11 +105,13 @@ static void sendEventToAllConnections(NSString *event)
 
   NSString *key = [inspectorURL absoluteString];
   RCTInspectorPackagerConnection *connection = socketConnections[key];
-  if (!connection) {
+  if (!connection || !connection.isConnected) {
     connection = [[RCTInspectorPackagerConnection alloc] initWithURL:inspectorURL];
     socketConnections[key] = connection;
     [connection connect];
   }
+
+  return connection;
 }
 
 @end

@@ -1,10 +1,8 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import <Foundation/Foundation.h>
@@ -25,7 +23,7 @@
  * `setNeedsLayout` for its superview which in its turn will trigger relayout.
  *
  * The new intrinsic content size is available via the `intrinsicContentSize`
- * propery of the root view. The view will not resize itself.
+ * property of the root view. The view will not resize itself.
  */
 - (void)rootViewDidChangeIntrinsicSize:(RCTRootView *)rootView;
 

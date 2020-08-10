@@ -1,16 +1,14 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #import "RCTLayoutAnimationGroup.h"
 
-#import "RCTLayoutAnimation.h"
 #import "RCTConvert.h"
+#import "RCTLayoutAnimation.h"
 
 @implementation RCTLayoutAnimationGroup
 
@@ -29,8 +27,7 @@
   return self;
 }
 
-- (instancetype)initWithConfig:(NSDictionary *)config
-                      callback:(RCTResponseSenderBlock)callback
+- (instancetype)initWithConfig:(NSDictionary *)config callback:(RCTResponseSenderBlock)callback
 {
   if (!config) {
     return nil;
@@ -59,16 +56,24 @@
   RCTLayoutAnimation *updatingLayoutAnimation = layoutAnimation.updatingLayoutAnimation;
   RCTLayoutAnimation *deletingLayoutAnimation = layoutAnimation.deletingLayoutAnimation;
 
-  return
-    (_creatingLayoutAnimation == creatingLayoutAnimation || [_creatingLayoutAnimation isEqual:creatingLayoutAnimation]) &&
-    (_updatingLayoutAnimation == updatingLayoutAnimation || [_updatingLayoutAnimation isEqual:updatingLayoutAnimation]) &&
-    (_deletingLayoutAnimation == deletingLayoutAnimation || [_deletingLayoutAnimation isEqual:deletingLayoutAnimation]);
+  return (_creatingLayoutAnimation == creatingLayoutAnimation ||
+          [_creatingLayoutAnimation isEqual:creatingLayoutAnimation]) &&
+      (_updatingLayoutAnimation == updatingLayoutAnimation ||
+       [_updatingLayoutAnimation isEqual:updatingLayoutAnimation]) &&
+      (_deletingLayoutAnimation == deletingLayoutAnimation ||
+       [_deletingLayoutAnimation isEqual:deletingLayoutAnimation]);
 }
 
 - (NSString *)description
 {
-  return [NSString stringWithFormat:@"<%@: %p; creatingLayoutAnimation: %@; updatingLayoutAnimation: %@; deletingLayoutAnimation: %@>",
-          NSStringFromClass([self class]), self, [_creatingLayoutAnimation description], [_updatingLayoutAnimation description], [_deletingLayoutAnimation description]];
+  return
+      [NSString stringWithFormat:
+                    @"<%@: %p; creatingLayoutAnimation: %@; updatingLayoutAnimation: %@; deletingLayoutAnimation: %@>",
+                    NSStringFromClass([self class]),
+                    self,
+                    [_creatingLayoutAnimation description],
+                    [_updatingLayoutAnimation description],
+                    [_deletingLayoutAnimation description]];
 }
 
 @end

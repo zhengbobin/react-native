@@ -1,14 +1,12 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 #if __OBJC__
-#  import <Foundation/Foundation.h>
+#import <Foundation/Foundation.h>
 #endif
 
 /**
@@ -48,6 +46,14 @@
 #endif
 #endif
 
+/**
+ * RCT_DEV_MENU can be used to toggle the dev menu separately from RCT_DEV.
+ * By default though, it will inherit from RCT_DEV.
+ */
+#ifndef RCT_DEV_MENU
+#define RCT_DEV_MENU RCT_DEV
+#endif
+
 #ifndef RCT_ENABLE_INSPECTOR
 #if RCT_DEV && __has_include(<React/RCTInspectorDevServerHelper.h>)
 #define RCT_ENABLE_INSPECTOR 1
@@ -57,7 +63,7 @@
 #endif
 
 #ifndef ENABLE_PACKAGER_CONNECTION
-#if RCT_DEV && __has_include(<React/RCTPackagerConnection.h>)
+#if RCT_DEV && (__has_include("RCTPackagerConnection.h") || __has_include(<React/RCTPackagerConnection.h>))
 #define ENABLE_PACKAGER_CONNECTION 1
 #else
 #define ENABLE_PACKAGER_CONNECTION 0
@@ -75,6 +81,30 @@
 #endif
 
 /**
+ * Add the default Metro packager port number
+ */
+#ifndef RCT_METRO_PORT
+#define RCT_METRO_PORT 8081
+#else
+// test if RCT_METRO_PORT is empty
+#define RCT_METRO_PORT_DO_EXPAND(VAL) VAL##1
+#define RCT_METRO_PORT_EXPAND(VAL) RCT_METRO_PORT_DO_EXPAND(VAL)
+#if !defined(RCT_METRO_PORT) || (RCT_METRO_PORT_EXPAND(RCT_METRO_PORT) == 1)
+// Only here if RCT_METRO_PORT is not defined
+// OR RCT_METRO_PORT is the empty string
+#undef RCT_METRO_PORT
+#define RCT_METRO_PORT 8081
+#endif
+#endif
+
+/**
+ * Add the default packager name
+ */
+#ifndef RCT_PACKAGER_NAME
+#define RCT_PACKAGER_NAME @"Metro"
+#endif
+
+/**
  * By default, only raise an NSAssertion in debug mode
  * (custom assert functions will still be called).
  */
@@ -86,16 +116,29 @@
  * Concat two literals. Supports macro expansions,
  * e.g. RCT_CONCAT(foo, __FILE__).
  */
-#define RCT_CONCAT2(A, B) A ## B
+#define RCT_CONCAT2(A, B) A##B
 #define RCT_CONCAT(A, B) RCT_CONCAT2(A, B)
+
+/**
+ * This attribute is used for static analysis.
+ */
+#if !defined RCT_DYNAMIC
+#if __has_attribute(objc_dynamic)
+#define RCT_DYNAMIC __attribute__((objc_dynamic))
+#else
+#define RCT_DYNAMIC
+#endif
+#endif
 
 /**
  * Throw an assertion for unimplemented methods.
  */
-#define RCT_NOT_IMPLEMENTED(method) \
-_Pragma("clang diagnostic push") \
-_Pragma("clang diagnostic ignored \"-Wmissing-method-return-type\"") \
-_Pragma("clang diagnostic ignored \"-Wunused-parameter\"") \
-RCT_EXTERN NSException *_RCTNotImplementedException(SEL, Class); \
-method NS_UNAVAILABLE { @throw _RCTNotImplementedException(_cmd, [self class]); } \
-_Pragma("clang diagnostic pop")
+#define RCT_NOT_IMPLEMENTED(method)                                                                     \
+  _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wmissing-method-return-type\"") \
+      _Pragma("clang diagnostic ignored \"-Wunused-parameter\"")                                        \
+          RCT_EXTERN NSException *_RCTNotImplementedException(SEL, Class);                              \
+  method NS_UNAVAILABLE                                                                                 \
+  {                                                                                                     \
+    @throw _RCTNotImplementedException(_cmd, [self class]);                                             \
+  }                                                                                                     \
+  _Pragma("clang diagnostic pop")

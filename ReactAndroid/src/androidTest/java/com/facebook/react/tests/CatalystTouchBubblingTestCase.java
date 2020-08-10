@@ -1,25 +1,23 @@
-/**
- * Copyright (c) 2013-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.tests;
 
 import android.view.View;
-
-import com.facebook.react.testing.ReactInstanceSpecForTest;
 import com.facebook.react.testing.ReactAppInstrumentationTestCase;
+import com.facebook.react.testing.ReactInstanceSpecForTest;
 import com.facebook.react.testing.SingleTouchGestureGenerator;
 import com.facebook.react.testing.StringRecordingModule;
 
 /**
- * This test is to verify that touch events bubbles up to the right handler. We emulate couple
- * of different gestures on top of the application reflecting following layout:
+ * This test is to verify that touch events bubbles up to the right handler. We emulate couple of
+ * different gestures on top of the application reflecting following layout:
  *
+ * <pre>
  * +---------------------------------------------------------------------------------------+
  * |                                                                                       |
  * | +----------------------------------------------------------------------------------+  |
@@ -43,11 +41,11 @@ import com.facebook.react.testing.StringRecordingModule;
  * | |                                                                                  |  |
  * | +----------------------------------------------------------------------------------+  |
  * +---------------------------------------------------------------------------------------+
+ * </pre>
  *
- * Then in each test case we eiter tap the center of a particular view (from A to E) or we start
- * a gesture in one view and end it with another.
- * View with names in brackets (e.g. {D}) have touch handlers set whereas all other views are not
- * declared to handler touch events.
+ * <p>Then in each test case we either tap the center of a particular view (from A to E) or we start
+ * a gesture in one view and end it with another. View with names in brackets (e.g. {D}) have touch
+ * handlers set whereas all other views are not declared to handler touch events.
  */
 public class CatalystTouchBubblingTestCase extends ReactAppInstrumentationTestCase {
 
@@ -59,8 +57,8 @@ public class CatalystTouchBubblingTestCase extends ReactAppInstrumentationTestCa
   }
 
   /**
-   * 1) Simulate touch event at view A, expect {B} touch handler to fire
-   * 2) Simulate touch event at view C, expect {D} touch handler to fire
+   * 1) Simulate touch event at view A, expect {B} touch handler to fire 2) Simulate touch event at
+   * view C, expect {D} touch handler to fire
    */
   public void testSimpleClickAtInnerElements() {
     mRecordingModule.reset();
@@ -82,8 +80,7 @@ public class CatalystTouchBubblingTestCase extends ReactAppInstrumentationTestCa
 
   /**
    * 1) Start touch at view A, then drag and release on view {B} (but outside of A), expect {B}'s
-   * touch handler to fire
-   * 2) Do the same with view C and {D}
+   * touch handler to fire 2) Do the same with view C and {D}
    */
   public void testDownOnInnerUpOnTouchableParent() {
     View innerButton = getViewByTestId("A");
@@ -153,7 +150,6 @@ public class CatalystTouchBubblingTestCase extends ReactAppInstrumentationTestCa
 
   @Override
   protected ReactInstanceSpecForTest createReactInstanceSpecForTest() {
-    return new ReactInstanceSpecForTest()
-        .addNativeModule(mRecordingModule);
+    return new ReactInstanceSpecForTest().addNativeModule(mRecordingModule);
   }
 }

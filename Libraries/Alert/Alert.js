@@ -1,154 +1,155 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule Alert
+ * @format
  * @flow
  */
+
 'use strict';
 
-const AlertIOS = require('AlertIOS');
-const NativeModules = require('NativeModules');
-const Platform = require('Platform');
+import Platform from '../Utilities/Platform';
+import NativeDialogManagerAndroid, {
+  type DialogOptions,
+} from '../NativeModules/specs/NativeDialogManagerAndroid';
+import RCTAlertManager from './RCTAlertManager';
 
-import type { AlertType, AlertButtonStyle } from 'AlertIOS';
-
-type Buttons = Array<{
+export type AlertType =
+  | 'default'
+  | 'plain-text'
+  | 'secure-text'
+  | 'login-password';
+export type AlertButtonStyle = 'default' | 'cancel' | 'destructive';
+export type Buttons = Array<{
   text?: string,
   onPress?: ?Function,
   style?: AlertButtonStyle,
+  ...
 }>;
 
 type Options = {
   cancelable?: ?boolean,
-  onDismiss?: ?Function,
+  onDismiss?: ?() => void,
+  ...
 };
 
 /**
  * Launches an alert dialog with the specified title and message.
  *
- * Optionally provide a list of buttons. Tapping any button will fire the
- * respective onPress callback and dismiss the alert. By default, the only
- * button will be an 'OK' button.
- *
- * This is an API that works both on iOS and Android and can show static
- * alerts. To show an alert that prompts the user to enter some information,
- * see `AlertIOS`; entering text in an alert is common on iOS only.
- *
- * ## iOS
- *
- * On iOS you can specify any number of buttons. Each button can optionally
- * specify a style, which is one of 'default', 'cancel' or 'destructive'.
- *
- * ## Android
- *
- * On Android at most three buttons can be specified. Android has a concept
- * of a neutral, negative and a positive button:
- *
- *   - If you specify one button, it will be the 'positive' one (such as 'OK')
- *   - Two buttons mean 'negative', 'positive' (such as 'Cancel', 'OK')
- *   - Three buttons mean 'neutral', 'negative', 'positive' (such as 'Later', 'Cancel', 'OK')
- *
- * By default alerts on Android can be dismissed by tapping outside of the alert
- * box. This event can be handled by providing an optional `options` parameter,
- * with an `onDismiss` callback property `{ onDismiss: () => {} }`.
- *
- * Alternatively, the dismissing behavior can be disabled altogether by providing
- * an optional `options` parameter with the `cancelable` property set to `false`
- * i.e. `{ cancelable: false }`
- *
- * Example usage:
- * ```
- * // Works on both iOS and Android
- * Alert.alert(
- *   'Alert Title',
- *   'My Alert Msg',
- *   [
- *     {text: 'Ask me later', onPress: () => console.log('Ask me later pressed')},
- *     {text: 'Cancel', onPress: () => console.log('Cancel Pressed'), style: 'cancel'},
- *     {text: 'OK', onPress: () => console.log('OK Pressed')},
- *   ],
- *   { cancelable: false }
- * )
- * ```
+ * See https://reactnative.dev/docs/alert.html
  */
 class Alert {
-
   static alert(
     title: ?string,
     message?: ?string,
     buttons?: Buttons,
     options?: Options,
-    type?: AlertType,
   ): void {
     if (Platform.OS === 'ios') {
-      if (typeof type !== 'undefined') {
-        console.warn('Alert.alert() with a 5th "type" parameter is deprecated and will be removed. Use AlertIOS.prompt() instead.');
-        AlertIOS.alert(title, message, buttons, type);
+      Alert.prompt(title, message, buttons, 'default');
+    } else if (Platform.OS === 'android') {
+      if (!NativeDialogManagerAndroid) {
         return;
       }
-      AlertIOS.alert(title, message, buttons);
-    } else if (Platform.OS === 'android') {
-      AlertAndroid.alert(title, message, buttons, options);
-    }
-  }
-}
+      const constants = NativeDialogManagerAndroid.getConstants();
 
-/**
- * Wrapper around the Android native module.
- */
-class AlertAndroid {
+      const config: DialogOptions = {
+        title: title || '',
+        message: message || '',
+        cancelable: false,
+      };
 
-  static alert(
-    title: ?string,
-    message?: ?string,
-    buttons?: Buttons,
-    options?: Options,
-  ): void {
-    var config = {
-      title: title || '',
-      message: message || '',
-    };
+      if (options && options.cancelable) {
+        config.cancelable = options.cancelable;
+      }
+      // At most three buttons (neutral, negative, positive). Ignore rest.
+      // The text 'OK' should be probably localized. iOS Alert does that in native.
+      const defaultPositiveText = 'OK';
+      const validButtons: Buttons = buttons
+        ? buttons.slice(0, 3)
+        : [{text: defaultPositiveText}];
+      const buttonPositive = validButtons.pop();
+      const buttonNegative = validButtons.pop();
+      const buttonNeutral = validButtons.pop();
 
-    if (options) {
-      config = {...config, cancelable: options.cancelable};
-    }
-    // At most three buttons (neutral, negative, positive). Ignore rest.
-    // The text 'OK' should be probably localized. iOS Alert does that in native.
-    var validButtons: Buttons = buttons ? buttons.slice(0, 3) : [{text: 'OK'}];
-    var buttonPositive = validButtons.pop();
-    var buttonNegative = validButtons.pop();
-    var buttonNeutral = validButtons.pop();
-    if (buttonNeutral) {
-      config = {...config, buttonNeutral: buttonNeutral.text || '' };
-    }
-    if (buttonNegative) {
-      config = {...config, buttonNegative: buttonNegative.text || '' };
-    }
-    if (buttonPositive) {
-      config = {...config, buttonPositive: buttonPositive.text || '' };
-    }
-    NativeModules.DialogManagerAndroid.showAlert(
-      config,
-      (errorMessage) => console.warn(errorMessage),
-      (action, buttonKey) => {
-        if (action === NativeModules.DialogManagerAndroid.buttonClicked) {
-          if (buttonKey === NativeModules.DialogManagerAndroid.buttonNeutral) {
+      if (buttonNeutral) {
+        config.buttonNeutral = buttonNeutral.text || '';
+      }
+      if (buttonNegative) {
+        config.buttonNegative = buttonNegative.text || '';
+      }
+      if (buttonPositive) {
+        config.buttonPositive = buttonPositive.text || defaultPositiveText;
+      }
+
+      const onAction = (action, buttonKey) => {
+        if (action === constants.buttonClicked) {
+          if (buttonKey === constants.buttonNeutral) {
             buttonNeutral.onPress && buttonNeutral.onPress();
-          } else if (buttonKey === NativeModules.DialogManagerAndroid.buttonNegative) {
+          } else if (buttonKey === constants.buttonNegative) {
             buttonNegative.onPress && buttonNegative.onPress();
-          } else if (buttonKey === NativeModules.DialogManagerAndroid.buttonPositive) {
+          } else if (buttonKey === constants.buttonPositive) {
             buttonPositive.onPress && buttonPositive.onPress();
           }
-        } else if (action === NativeModules.DialogManagerAndroid.dismissed) {
+        } else if (action === constants.dismissed) {
           options && options.onDismiss && options.onDismiss();
         }
+      };
+      const onError = errorMessage => console.warn(errorMessage);
+      NativeDialogManagerAndroid.showAlert(config, onError, onAction);
+    }
+  }
+
+  static prompt(
+    title: ?string,
+    message?: ?string,
+    callbackOrButtons?: ?(((text: string) => void) | Buttons),
+    type?: ?AlertType = 'plain-text',
+    defaultValue?: string,
+    keyboardType?: string,
+  ): void {
+    if (Platform.OS === 'ios') {
+      let callbacks = [];
+      const buttons = [];
+      let cancelButtonKey;
+      let destructiveButtonKey;
+      if (typeof callbackOrButtons === 'function') {
+        callbacks = [callbackOrButtons];
+      } else if (Array.isArray(callbackOrButtons)) {
+        callbackOrButtons.forEach((btn, index) => {
+          callbacks[index] = btn.onPress;
+          if (btn.style === 'cancel') {
+            cancelButtonKey = String(index);
+          } else if (btn.style === 'destructive') {
+            destructiveButtonKey = String(index);
+          }
+          if (btn.text || index < (callbackOrButtons || []).length - 1) {
+            const btnDef = {};
+            btnDef[index] = btn.text || '';
+            buttons.push(btnDef);
+          }
+        });
       }
-    );
+
+      RCTAlertManager.alertWithArgs(
+        {
+          title: title || '',
+          message: message || undefined,
+          buttons,
+          type: type || undefined,
+          defaultValue,
+          cancelButtonKey,
+          destructiveButtonKey,
+          keyboardType,
+        },
+        (id, value) => {
+          const cb = callbacks[id];
+          cb && cb(value);
+        },
+      );
+    }
   }
 }
 

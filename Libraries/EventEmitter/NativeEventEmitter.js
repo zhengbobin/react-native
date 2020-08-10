@@ -1,27 +1,25 @@
 /**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
- * @providesModule NativeEventEmitter
+ * @format
  * @flow
  */
+
 'use strict';
 
-const EventEmitter = require('EventEmitter');
-const Platform = require('Platform');
-const RCTDeviceEventEmitter = require('RCTDeviceEventEmitter');
-
-const invariant = require('fbjs/lib/invariant');
-
-import type EmitterSubscription from 'EmitterSubscription';
+import Platform from '../Utilities/Platform';
+import EventEmitter from '../vendor/emitter/EventEmitter';
+import {type EventSubscription} from '../vendor/emitter/EventEmitter';
+import RCTDeviceEventEmitter from './RCTDeviceEventEmitter';
+import invariant from 'invariant';
 
 type NativeModule = {
   +addListener: (eventType: string) => void,
   +removeListeners: (count: number) => void,
+  ...
 };
 
 /**
@@ -43,7 +41,7 @@ class NativeEventEmitter extends EventEmitter {
     eventType: string,
     listener: Function,
     context: ?Object,
-  ): EmitterSubscription {
+  ): EventSubscription {
     if (this._nativeModule != null) {
       this._nativeModule.addListener(eventType);
     }
@@ -59,7 +57,7 @@ class NativeEventEmitter extends EventEmitter {
     super.removeAllListeners(eventType);
   }
 
-  removeSubscription(subscription: EmitterSubscription) {
+  removeSubscription(subscription: EventSubscription) {
     if (this._nativeModule != null) {
       this._nativeModule.removeListeners(1);
     }

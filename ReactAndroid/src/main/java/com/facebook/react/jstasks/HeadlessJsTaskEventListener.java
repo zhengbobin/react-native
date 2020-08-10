@@ -1,17 +1,13 @@
-/**
- * Copyright (c) 2015-present, Facebook, Inc.
- * All rights reserved.
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 package com.facebook.react.jstasks;
 
-/**
- * Listener interface for task lifecycle events.
- */
+/** Listener interface for task lifecycle events. */
 public interface HeadlessJsTaskEventListener {
 
   /**
@@ -22,9 +18,9 @@ public interface HeadlessJsTaskEventListener {
   void onHeadlessJsTaskStart(int taskId);
 
   /**
-   * Called when a JS task finishes (i.e. when
-   * {@link HeadlessJsTaskSupportModule#notifyTaskFinished} is called, or when it times out), on the
-   * UI thread.
+   * Called when a JS task finishes (i.e. when {@link
+   * HeadlessJsTaskSupportModule#notifyTaskFinished} is called, or when it times out), on the UI
+   * thread.
    */
   void onHeadlessJsTaskFinish(int taskId);
 }
